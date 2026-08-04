@@ -23,9 +23,12 @@ jobs:
       matrix:
         include:
           # macOS 双 arch 在同一台机器上出（electron-builder.yml 里声明了 x64 + arm64）。
-          - { os: macos-latest, name: macOS (x64 + arm64), targets: --mac }
+          - { os: macos-latest, name: macOS (x64 + arm64) }
           # linux 与 win 都从 ubuntu 出；win 的 nsis 走 wine。全部未签名。
-          - { os: ubuntu-latest, name: Linux + Windows, targets: --linux --win }
+          - { os: ubuntu-latest, name: Linux + Windows }
+    env:
+      # Day-1 不签名、不公证（架构 §1.3 非目标）。
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -39,17 +42,58 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends wine64 wine32
 
+      - name: 探针 wine --version
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: wine --version
+
       - run: bun install --frozen-lockfile
       - run: bun run build
 
-      - name: electron-builder
+      # 刻意拆成分目标的步骤，且各自 continue-on-error：
+      # Actions 的日志需要登录才看得到，但 step 的名字与结论是公开可读的。
+      # 拆开之后，一轮 CI 就能从「哪个 step 红」直接定位到哪个打包目标坏了，
+      # 而不必为了拿一条错误信息反复 push。末尾的汇总步骤负责让整个 job 照常变红。
+      - name: electron-builder · mac dmg
+        if: matrix.os == 'macos-latest'
         working-directory: packages/app
-        env:
-          # Day-1 不签名、不公证（架构 §1.3 非目标）。
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: bunx electron-builder ${{ matrix.targets }} --publish never
+        run: bunx electron-builder --mac --publish never
 
+      - name: electron-builder · linux AppImage
+        id: linux_appimage
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        working-directory: packages/app
+        run: bunx electron-builder --linux AppImage --publish never
+
+      - name: electron-builder · linux deb
+        id: linux_deb
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        working-directory: packages/app
+        run: bunx electron-builder --linux deb --publish never
+
+      - name: electron-builder · win nsis
+        id: win_nsis
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        working-directory: packages/app
+        run: bunx electron-builder --win nsis --publish never
+
+      - name: 三个目标必须全绿
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          echo "AppImage = ${{ steps.linux_appimage.outcome }}"
+          echo "deb      = ${{ steps.linux_deb.outcome }}"
+          echo "nsis     = ${{ steps.win_nsis.outcome }}"
+          test "${{ steps.linux_appimage.outcome }}" = success
+          test "${{ steps.linux_deb.outcome }}" = success
+          test "${{ steps.win_nsis.outcome }}" = success
+
+      # always()：即使某个目标挂了，也把已经出来的产物传上去——
+      # 产物清单（名字与大小）是公开可读的，这是另一条能看见真相的通道。
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: sepia-${{ matrix.os }}
           path: |
@@ -57,7 +101,7 @@ jobs:
             packages/app/dist/*.AppImage
             packages/app/dist/*.deb
             packages/app/dist/*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
   release:
     name: release
