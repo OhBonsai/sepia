@@ -2,7 +2,10 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
 
+import type { EditorView as EditorViewType } from '@codemirror/view'
+
 import type { LineEnding } from './bytes.ts'
+import type { SearchApi } from './extensions/search-types.ts'
 
 // 纯文本编辑所需的**最小**扩展集合。
 //
@@ -92,6 +95,16 @@ export interface MountOptions extends BaseExtensionOptions {
   scrollTop?: number
   /** 滚动变化时回调，用于写回 session。挂在 scrollDOM 上——滚动属于 view，不属于 state。 */
   onScroll?: (scrollTop: number) => void
+  /**
+   * Stage 2 起：markdown 语法层（A/B/C/D 装饰、高亮、剪贴板、查找替换）。
+   * 由调用方经 `@sepia/editor/markdown` **异步加载后**传入——那个子入口刻意不在
+   * 主入口静态可达，否则 1MB 的语法层会进 renderer 首屏 bundle，把 t0→t3 从
+   * 316ms 顶到 650ms（001 §4.7：入口保持小，重组件按需；冷启动 smoke 抓过）。
+   * 不传 = 纯文本编辑器，Stage 1 的一切照旧。
+   */
+  syntax?: Extension[]
+  /** 查找替换驱动的工厂，与 syntax 同源（`@sepia/editor/markdown` 导出）——同为惰性层。 */
+  searchFactory?: (view: EditorViewType) => SearchApi
   parent: HTMLElement
 }
 
@@ -100,6 +113,8 @@ export interface MountedEditor {
   read(): string
   focus(): void
   destroy(): void
+  /** 查找替换的驱动接口。UI 是 app 侧的 React，经这里驱动 CM6（editor ↮ ui）。未装语法层时为 null。 */
+  search: SearchApi | null
 }
 
 /**
@@ -110,11 +125,11 @@ export interface MountedEditor {
  * 编译不过（结构 2 的编译期物理约束）。能力该沉到哪层，包边界会直接告诉你。
  */
 export function mountEditor(options: MountOptions): MountedEditor {
-  const { doc, cursor, scrollTop, onScroll, parent, ...rest } = options
+  const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, ...rest } = options
   const state = EditorState.create({
     doc,
     selection: { anchor: Math.min(Math.max(cursor, 0), doc.length) },
-    extensions: baseExtensions(rest),
+    extensions: [baseExtensions(rest), syntax ?? []],
   })
   const view = new EditorView({ state, parent })
 
@@ -148,6 +163,7 @@ export function mountEditor(options: MountOptions): MountedEditor {
       detachScroll?.()
       view.destroy()
     },
+    search: searchFactory?.(view) ?? null,
   }
 }
 

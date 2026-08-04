@@ -193,7 +193,9 @@ electron-vite build
 │        resolveId '@lydell/node-pty' → 抛错桩（T-18）
 │        writeBundle：复制 *.wasm → out/main/chunks/
 ├─ preload：cjs 单文件
-└─ renderer：React + Tailwind
+└─ renderer：React + Tailwind（**必须显式开 minify**——electron-vite 默认不压缩
+   renderer，Stage 1 曾以 1.2MB 未压缩源码挡在首帧前，Stage 2 实测抓出；见
+   electron.vite.config.ts 的注记）
 
 electron-builder
 └─ mac(双 arch) / win(nsis) / linux(AppImage + deb)，Day-1 不签名

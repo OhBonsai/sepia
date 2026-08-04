@@ -1,0 +1,13 @@
+① 行内公式 gate 证据（2026-08-04，构建产物 + Playwright）
+
+1) 光标在文首（公式之外）：.katex 渲染节点 = 3（期望 3：两行内 + 一块级）
+2) 点击第一个公式（坐标点击=真实用户路径）：katex=2（3→2 ✓）  源码样式节点=1  源码文本可见=true
+3) 合成 composition 冻结（机制层）：前 2 中 2（相等 = 组合期间装饰未重建）
+4) 全程未保存，磁盘字节原样：true
+
+截图：gate1-formula-rendered.png（渲染态）｜ gate2-formula-revealed.png（点击揭示回源码）
+
+真人待验（130 §1.6b 前两条）：
+  a. 打开任一含 $...$ 的 page，在公式**前后**用拼音连续输入 20+ 字——候选框不闪、不吃字
+  b. 光标紧贴公式边界时输入——replace decoration × IME 的最险组合
+  复现环境：bun run dev，或构建产物 bunx electron packages/app/out/main/index.js

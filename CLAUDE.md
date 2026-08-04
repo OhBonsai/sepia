@@ -112,9 +112,24 @@ SEPIA_HARNESS_BYPASS=1            临时跳过全部检查跑通别的 —— �
 流向：`mind → design → plan → 代码`。逆行（代码里冒出的新想法）先回 mind 报到。
 交互原型一律放 `prototype/`，不要在 `specs/` 下另建 prototypes 目录。
 
+## 交互原型（交互手感的基准）
+
+**当前版本：`prototype/proto-2608031403.html`**（浏览器直接打开；`proto-2608021550.html` 是旧版，仅存档）。
+12 个可点击场景（W1–W12）的灰阶线框，功能盘点在 `specs/design/sepia-prototype-features.md`，
+生成提示词在 `prototype/PROMPT.md`。
+
+**用法**：实现某个交互前，先在原型里走一遍对应场景，行为分歧以原型为准、以架构文档为裁判——
+Stage 1 对应 W1（冷启动）；Stage 2 对应 W2（live preview 揭示）、W4（textdiagram 失焦渲染，
+即 C 类 widget 的交互模式）、W5（代码块）；Stage 4 对应 W6–W8（markup 浮层/diff/落笔）；
+Stage 5 对应 W10–W11（还白/徽章线程）；Stage 3 对应 W12（Agent 缺席）。
+CC 代验的截图判定（130 §1.6a）以对应场景为基准。
+
+**它只定交互，不定视觉**——灰阶线框，圆角/配色/字体以各 stage 的风格裁决为准（见「术语」末条）。
+
 ## 术语
 
 - 一律叫 **Agent**（「智力器」「智能体」已废止；专名 AgentBridge / Agent Client Protocol 保持原样）
 - 笔记库叫 **book**、单篇叫 **page**（**vault 一词废止**）。注意「库」在「音效库/素材库/编码库」等
   library 语义下照常使用，不要误替
-- 视觉风格（圆角、配色、字体）待线框走查后单独定；原文里「不要圆角/构成主义」是情绪参考不是规则
+- 视觉风格：**Stage 2 起已裁**（130 §1.3）——shadcn 结构 + Flexoki 色板映射进 `--sepia-*` +
+  opencode 式克制（无阴影、4px 圆角、无渐变、即时切换）。原文里「不要圆角/构成主义」是情绪参考不是规则

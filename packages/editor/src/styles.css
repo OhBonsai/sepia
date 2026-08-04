@@ -1,0 +1,95 @@
+/* Stage 2 装饰与 widget 的样式。**只有 var(--…)，零字面色值**（纪律 3）——
+   色值住在 @sepia/ui 的调色板，两包共享变量名不共享代码（editor ↮ ui，T-20）。
+   气质规则（130 风格裁决）：无阴影、4px 圆角、无渐变、即时切换。 */
+
+/* ── A 类 ─────────────────────────────────────────────────────────────── */
+.cm-md-em { font-style: italic; }
+.cm-md-strong { font-weight: 650; }
+.cm-md-strike { text-decoration: line-through; color: var(--sepia-ink-muted); }
+.cm-md-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  color: var(--sepia-syn-code);
+  background: var(--sepia-surface);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.cm-md-link { color: var(--sepia-syn-link); text-decoration: none; }
+.cm-md-math-src {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--sepia-syn-math);
+}
+.sepia-math .katex { font-size: 1.05em; }
+.sepia-math-block { text-align: center; padding: 8px 0; }
+
+/* ── B 类 ─────────────────────────────────────────────────────────────── */
+.cm-md-h { font-weight: 650; }
+.cm-md-h1 { font-size: 1.6em; }
+.cm-md-h2 { font-size: 1.4em; }
+.cm-md-h3 { font-size: 1.2em; }
+.cm-md-h4 { font-size: 1.08em; }
+.cm-md-h5 { font-size: 1em; }
+.cm-md-h6 { font-size: 1em; color: var(--sepia-ink-muted); }
+
+.cm-md-quote {
+  border-left: 2px solid var(--sepia-rule);
+  padding-left: 12px;
+  color: var(--sepia-ink-muted);
+}
+.cm-md-listmark { color: var(--sepia-syn-mark); }
+.sepia-bullet { color: var(--sepia-syn-mark); }
+.sepia-checkbox { color: var(--sepia-syn-mark); }
+.sepia-checkbox-on { color: var(--sepia-syn-link); }
+.sepia-hr {
+  border: none;
+  border-top: 1px solid var(--sepia-rule);
+  margin: 4px 0;
+}
+.cm-md-frontmatter {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  color: var(--sepia-ink-muted);
+}
+
+/* ── C 类 widget ──────────────────────────────────────────────────────── */
+.sepia-table { padding: 4px 0; }
+.sepia-table table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.sepia-table th,
+.sepia-table td {
+  border: 1px solid var(--sepia-rule);
+  padding: 4px 10px;
+  text-align: left;
+}
+.sepia-table th { background: var(--sepia-surface); font-weight: 650; }
+
+.sepia-image img { max-width: 100%; border-radius: 4px; }
+.sepia-image-broken {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px dashed var(--sepia-rule);
+  border-radius: 4px;
+  color: var(--sepia-ink-muted);
+  font-size: 0.9em;
+}
+
+.sepia-textdiagram {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  line-height: 1.35;
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 4px 0;
+  overflow-x: auto;
+}
+
+/* ── D 类与代码块 ─────────────────────────────────────────────────────── */
+.cm-md-codeblock { background: var(--sepia-surface); }
+.cm-md-html {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--sepia-ink-muted);
+}

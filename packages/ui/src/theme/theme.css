@@ -1,59 +1,123 @@
 /* 调色板——**整个仓库唯一允许出现字面色值的地方**。
-   变量名的另一份副本在 vars.ts（只有名字，没有色值）。
+   变量名的另一份副本在 vars.ts（只放名字，不放色值）。
+
+   Stage 2 起色值映射自 Flexoki（Steph Ango 的「纸墨」配色，MIT；130 §1.3 风格裁决）：
+   与 Sepia 的纸/墨隐喻同源——paper/ink 直接取它的 paper/black，语法八色取它的
+   accent 系（亮色用 600 档、暗色用 400 档，Flexoki 官方推荐的双档用法）。
+   这组语法色也是 Stage 4 check:theme（Shiki 与 CM6 同源）的同源真相。
 
    两层来源，顺序有意义：
-   1. `@media (prefers-color-scheme)` 给出跟随系统的默认值 —— 它在**首帧就生效**，
+   1. `@media (prefers-color-scheme)` 给出跟随系统的默认值 —— 首帧就生效，
       不需要等任何 JS。这是「无白闪」的第一道保险（纪律 13）。
-   2. `[data-theme]` 属性覆盖 —— 用户在 config.json 里显式选了亮/暗时才用得上，
-      由 preload 在首帧前落到 <html>。
-   顺序反了就会出现「显式设了暗色、系统是亮色，结果闪一下亮的」。 */
+   2. `[data-theme]` 属性覆盖 —— 用户在 config.json 里显式选亮/暗时用，
+      由 preload 在首帧前落到 <html>。 */
 
 :root {
-  --sepia-paper: #fbfaf7;
-  --sepia-ink: #1f1d1a;
-  --sepia-ink-muted: #6b6660;
-  --sepia-rule: #e4e0d8;
-  --sepia-selection: #d8e6f2;
-  --sepia-caret: #1f1d1a;
-  --sepia-danger: #9b2c1f;
+  /* Flexoki base（亮）：paper / black / 600 / 100 / 50 */
+  --sepia-paper: #fffcf0;
+  --sepia-ink: #100f0f;
+  --sepia-ink-muted: #6f6e69;
+  --sepia-rule: #e6e4d9;
+  --sepia-surface: #f2f0e5;
+  --sepia-selection: #dad8ce;
+  --sepia-caret: #100f0f;
+  --sepia-danger: #af3029;
+
+  /* 语法八色（Flexoki accent 600 档）+ 结构角色 */
+  --sepia-syn-mark: #b7b5ac;
+  --sepia-syn-link: #205ea6;
+  --sepia-syn-code: #24837b;
+  --sepia-syn-math: #5e409d;
+  --sepia-syn-keyword: #66800b;
+  --sepia-syn-string: #24837b;
+  --sepia-syn-constant: #5e409d;
+  --sepia-syn-function: #bc5215;
+  --sepia-syn-type: #ad8301;
+  --sepia-syn-property: #205ea6;
+  --sepia-syn-tag: #66800b;
+  --sepia-syn-attribute: #a02f6f;
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --sepia-paper: #1b1a18;
-    --sepia-ink: #e8e4dc;
-    --sepia-ink-muted: #918b82;
-    --sepia-rule: #322f2b;
-    --sepia-selection: #2c3d4d;
-    --sepia-caret: #e8e4dc;
-    --sepia-danger: #e07c6c;
+    /* Flexoki base（暗）：black 之上一档做纸面，200 做墨 */
+    --sepia-paper: #100f0f;
+    --sepia-ink: #cecdc3;
+    --sepia-ink-muted: #878580;
+    --sepia-rule: #282726;
+    --sepia-surface: #1c1b1a;
+    --sepia-selection: #343331;
+    --sepia-caret: #cecdc3;
+    --sepia-danger: #d14d41;
+
+    /* 语法八色（Flexoki accent 400 档） */
+    --sepia-syn-mark: #575653;
+    --sepia-syn-link: #4385be;
+    --sepia-syn-code: #3aa99f;
+    --sepia-syn-math: #8b7ec8;
+    --sepia-syn-keyword: #879a39;
+    --sepia-syn-string: #3aa99f;
+    --sepia-syn-constant: #8b7ec8;
+    --sepia-syn-function: #da702c;
+    --sepia-syn-type: #d0a215;
+    --sepia-syn-property: #4385be;
+    --sepia-syn-tag: #879a39;
+    --sepia-syn-attribute: #ce5d97;
 
     color-scheme: dark;
   }
 }
 
 :root[data-theme='light'] {
-  --sepia-paper: #fbfaf7;
-  --sepia-ink: #1f1d1a;
-  --sepia-ink-muted: #6b6660;
-  --sepia-rule: #e4e0d8;
-  --sepia-selection: #d8e6f2;
-  --sepia-caret: #1f1d1a;
-  --sepia-danger: #9b2c1f;
+  --sepia-paper: #fffcf0;
+  --sepia-ink: #100f0f;
+  --sepia-ink-muted: #6f6e69;
+  --sepia-rule: #e6e4d9;
+  --sepia-surface: #f2f0e5;
+  --sepia-selection: #dad8ce;
+  --sepia-caret: #100f0f;
+  --sepia-danger: #af3029;
+
+  --sepia-syn-mark: #b7b5ac;
+  --sepia-syn-link: #205ea6;
+  --sepia-syn-code: #24837b;
+  --sepia-syn-math: #5e409d;
+  --sepia-syn-keyword: #66800b;
+  --sepia-syn-string: #24837b;
+  --sepia-syn-constant: #5e409d;
+  --sepia-syn-function: #bc5215;
+  --sepia-syn-type: #ad8301;
+  --sepia-syn-property: #205ea6;
+  --sepia-syn-tag: #66800b;
+  --sepia-syn-attribute: #a02f6f;
 
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --sepia-paper: #1b1a18;
-  --sepia-ink: #e8e4dc;
-  --sepia-ink-muted: #918b82;
-  --sepia-rule: #322f2b;
-  --sepia-selection: #2c3d4d;
-  --sepia-caret: #e8e4dc;
-  --sepia-danger: #e07c6c;
+  --sepia-paper: #100f0f;
+  --sepia-ink: #cecdc3;
+  --sepia-ink-muted: #878580;
+  --sepia-rule: #282726;
+  --sepia-surface: #1c1b1a;
+  --sepia-selection: #343331;
+  --sepia-caret: #cecdc3;
+  --sepia-danger: #d14d41;
+
+  --sepia-syn-mark: #575653;
+  --sepia-syn-link: #4385be;
+  --sepia-syn-code: #3aa99f;
+  --sepia-syn-math: #8b7ec8;
+  --sepia-syn-keyword: #879a39;
+  --sepia-syn-string: #3aa99f;
+  --sepia-syn-constant: #8b7ec8;
+  --sepia-syn-function: #da702c;
+  --sepia-syn-type: #d0a215;
+  --sepia-syn-property: #4385be;
+  --sepia-syn-tag: #879a39;
+  --sepia-syn-attribute: #ce5d97;
 
   color-scheme: dark;
 }

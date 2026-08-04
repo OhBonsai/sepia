@@ -11,7 +11,8 @@ import type { ResolvedTheme, ThemeMode } from '@sepia/core'
 // `--sepia-paper` 的两个取值一致。它没法从 CSS 里读——窗口在任何 CSS 加载之前
 // 就要有底色，否则先白一下再变暗，正砸在「白纸秒开」的观感上。
 
-const PAPER = { light: '#fbfaf7', dark: '#1b1a18' } as const
+// Stage 2 起取值随 Flexoki 映射（130 风格裁决）：paper / black。
+const PAPER = { light: '#fffcf0', dark: '#100f0f' } as const
 
 let mode: ThemeMode = 'system'
 const listeners = new Set<(theme: ResolvedTheme) => void>()

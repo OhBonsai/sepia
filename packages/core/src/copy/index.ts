@@ -18,6 +18,17 @@ export const copy = {
   'error.open.failed': '打不开这个文件',
   'error.save.failed': '保存失败',
   'error.page.missing': '上次的 page 已经不在原处了',
+
+  'cmd.edit.find': '查找',
+  'cmd.edit.replace': '替换',
+  'search.placeholder': '查找…',
+  'search.replace.placeholder': '替换为…',
+  'search.next': '下一个',
+  'search.previous': '上一个',
+  'search.replace.one': '替换',
+  'search.replace.all': '全部替换',
+  'search.close': '关闭',
+  'search.count.none': '无结果',
 } as const
 
 export type CopyKey = keyof typeof copy

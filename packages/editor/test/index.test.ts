@@ -17,10 +17,12 @@ describe('@sepia/editor baseExtensions', () => {
     expect(readDoc(next)).toBe(`${original}四`)
   })
 
-  it('**本 stage 不许有任何装饰**——Stage 2 才做 A/B/C/D 四类', () => {
-    // 装饰会通过 EditorView 的 decorations facet 生效。没有 view 时，
-    // 至少可以断言扩展集里没有引入 markdown 语言（有语言就必有高亮装饰）。
-    const state = EditorState.create({ doc: 'x', extensions: baseExtensions() })
+  // **撤除记录（130 §1.4 #9，前置五）**：Stage 1 这里曾是「不许有任何装饰」的刹车，
+  // 防 Stage 2 提前滑入。Stage 2 开工，按 130 的裁决**改写**而非静默删：
+  // 装饰只许出现在 markdownExtensions 这一层，baseExtensions（纯文本层）永远干净——
+  // 这保证 Stage 1 的一切（纯文本模式、字节保真基线）继续成立。
+  it('baseExtensions 仍是纯文本层：无语言、无装饰（Stage 1 契约不因 Stage 2 松动）', () => {
+    const state = EditorState.create({ doc: 'x **y**', extensions: baseExtensions() })
     expect(state.facet(EditorState.languageData)).toEqual([])
   })
 

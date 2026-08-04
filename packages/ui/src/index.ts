@@ -6,3 +6,4 @@
 
 export { type ThemeVar, type ThemeVarName, themeVar } from './theme/vars.ts'
 export { Loading, type LoadingProps } from './components/loading.tsx'
+export { SearchPanel, type SearchPanelCopy, type SearchPanelProps } from './components/search-panel.tsx'

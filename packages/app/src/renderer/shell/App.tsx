@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { type SessionState, t } from '@sepia/core'
-import { type TextFidelity, readFidelity, writeFidelity } from '@sepia/editor'
-import { Loading } from '@sepia/ui'
+import { type SearchApi, type TextFidelity, readFidelity, writeFidelity } from '@sepia/editor'
+import { Loading, SearchPanel } from '@sepia/ui'
 
 import { EditorHost } from '../editor/host.tsx'
 import { registerCommand } from '../commands/registry.ts'
@@ -30,6 +30,13 @@ export function App(): React.JSX.Element {
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const draft = useRef<string>('')
+
+  // 查找替换：CM6 的驱动接口由 EditorHost 上抛，面板是 ui 的 dumb 组件，这里装配
+  const searchApi = useRef<SearchApi | null>(null)
+  const [searchOpen, setSearchOpen] = useState<false | 'find' | 'replace'>(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchReplace, setSearchReplace] = useState('')
+  const [searchCount, setSearchCount] = useState(0)
 
   // session 的最新值攒在 ref 里，到点一次写完——不随每个事件写盘（附录 D.3 第 2 条）。
   const sessionDraft = useRef({ cursor: 0, scrollTop: 0 })
@@ -100,11 +107,38 @@ export function App(): React.JSX.Element {
     })()
   }, [open])
 
+  // 查找替换：面板改 query → 立即写进 CM6（即时状态切换，无防抖——本地操作无 IO）
+  const applySearch = useCallback((query: string, replace: string): void => {
+    if (!searchApi.current) return
+    const state = searchApi.current.set({ query, replace })
+    setSearchCount(state.count)
+  }, [])
+
+  const openSearch = useCallback(
+    (mode: 'find' | 'replace'): void => {
+      setSearchOpen(mode)
+      applySearch(searchQuery, searchReplace)
+    },
+    [applySearch, searchQuery, searchReplace],
+  )
+
+  const closeSearch = useCallback((): void => {
+    setSearchOpen(false)
+    if (searchApi.current) searchApi.current.set({ query: '' })
+  }, [])
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     registerCommand({ id: 'file.save', title: 'cmd.file.save', key: 'Mod-s', run: save })
     registerCommand({ id: 'file.open', title: 'cmd.file.open', key: 'Mod-o', run: pick })
-  }, [save, pick])
+    registerCommand({ id: 'edit.find', title: 'cmd.edit.find', key: 'Mod-f', run: () => openSearch('find') })
+    registerCommand({
+      id: 'edit.replace',
+      title: 'cmd.edit.replace',
+      key: 'Mod-Alt-f',
+      run: () => openSearch('replace'),
+    })
+  }, [save, pick, openSearch])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -115,11 +149,18 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'o') {
         event.preventDefault()
         void pick()
+      } else if (event.key === 'f' && !event.altKey) {
+        event.preventDefault()
+        openSearch('find')
+      } else if ((event.key === 'f' || event.key === 'ƒ') && event.altKey) {
+        // macOS 上 ⌥F 产出 ƒ，两个都接
+        event.preventDefault()
+        openSearch('replace')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [save, pick])
+  }, [save, pick, openSearch])
 
   useEffect(() => {
     document.title = page ? `${dirty ? '• ' : ''}${page.path.split('/').pop()}` : t('app.name')
@@ -130,6 +171,42 @@ export function App(): React.JSX.Element {
   return (
     <div className="sepia-shell" data-sepia-shell={status}>
       {error !== null && <div className="sepia-error">{error}</div>}
+      {searchOpen !== false && page !== null && (
+        <SearchPanel
+          copy={{
+            searchPlaceholder: t('search.placeholder'),
+            replacePlaceholder: t('search.replace.placeholder'),
+            next: t('search.next'),
+            previous: t('search.previous'),
+            replaceOne: t('search.replace.one'),
+            replaceAllLabel: t('search.replace.all'),
+            close: t('search.close'),
+            count: searchQuery === '' ? '' : searchCount === 0 ? t('search.count.none') : `${searchCount}`,
+          }}
+          query={searchQuery}
+          replaceValue={searchReplace}
+          showReplace={searchOpen === 'replace'}
+          onQueryChange={(value) => {
+            setSearchQuery(value)
+            applySearch(value, searchReplace)
+          }}
+          onReplaceChange={(value) => {
+            setSearchReplace(value)
+            applySearch(searchQuery, value)
+          }}
+          onNext={() => searchApi.current?.next()}
+          onPrevious={() => searchApi.current?.previous()}
+          onReplaceOne={() => {
+            searchApi.current?.replaceNext()
+            applySearch(searchQuery, searchReplace)
+          }}
+          onReplaceAll={() => {
+            searchApi.current?.replaceAll()
+            applySearch(searchQuery, searchReplace)
+          }}
+          onClose={closeSearch}
+        />
+      )}
       {page === null ? (
         <div className="sepia-empty">
           <p>{t('empty.hint')}</p>
@@ -143,6 +220,10 @@ export function App(): React.JSX.Element {
           lineEnding={page.fidelity.lineEnding}
           initialCursor={page.cursor}
           initialScrollTop={page.scrollTop}
+          assetBase={page.path.slice(0, page.path.lastIndexOf('/'))}
+          onSearchReady={(sapi) => {
+            searchApi.current = sapi
+          }}
           onChange={(next) => {
             draft.current = next
             setDirty(true)

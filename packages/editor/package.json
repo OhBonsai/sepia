@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./markdown": "./src/markdown.ts",
+    "./styles.css": "./src/styles.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -12,11 +14,22 @@
   },
   "dependencies": {
     "@codemirror/commands": "catalog:",
+    "@codemirror/lang-markdown": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/language-data": "catalog:",
+    "@codemirror/search": "catalog:",
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",
-    "@sepia/core": "workspace:*"
+    "@lezer/common": "catalog:",
+    "@lezer/highlight": "catalog:",
+    "@lezer/markdown": "catalog:",
+    "@sepia/core": "workspace:*",
+    "katex": "catalog:",
+    "marked": "catalog:",
+    "turndown": "catalog:"
   },
   "devDependencies": {
+    "@types/turndown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

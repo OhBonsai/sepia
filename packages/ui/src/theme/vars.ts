@@ -16,12 +16,28 @@ export const themeVar = {
   inkMuted: 'var(--sepia-ink-muted)',
   /** 分隔线 */
   rule: 'var(--sepia-rule)',
+  /** 比纸面深一档的面：行内代码底、代码块底、表头 */
+  surface: 'var(--sepia-surface)',
   /** 选区背景 */
   selection: 'var(--sepia-selection)',
   /** 光标 */
   caret: 'var(--sepia-caret)',
   /** 出错时的强调色 */
   danger: 'var(--sepia-danger)',
+
+  // 语法色板（Flexoki accent 映射；Stage 4 check:theme 的同源真相）
+  synMark: 'var(--sepia-syn-mark)',
+  synLink: 'var(--sepia-syn-link)',
+  synCode: 'var(--sepia-syn-code)',
+  synMath: 'var(--sepia-syn-math)',
+  synKeyword: 'var(--sepia-syn-keyword)',
+  synString: 'var(--sepia-syn-string)',
+  synConstant: 'var(--sepia-syn-constant)',
+  synFunction: 'var(--sepia-syn-function)',
+  synType: 'var(--sepia-syn-type)',
+  synProperty: 'var(--sepia-syn-property)',
+  synTag: 'var(--sepia-syn-tag)',
+  synAttribute: 'var(--sepia-syn-attribute)',
 } as const satisfies Record<string, ThemeVar>
 
 export type ThemeVarName = keyof typeof themeVar

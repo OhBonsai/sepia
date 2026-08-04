@@ -26,6 +26,9 @@ export default defineConfig({
     build: {
       outDir: resolve(__dirname, 'out/renderer'),
       rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
+      // electron-vite 默认不压缩 renderer——入口曾以 1.2MB 未压缩源码的姿态
+      // 挡在首帧前，t0→t3 因此从 316ms 涨到 ~550ms（Stage 2 实测撞出来的）。
+      minify: 'esbuild',
     },
   },
 })
