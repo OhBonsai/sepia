@@ -46,8 +46,10 @@ jobs:
       # `bunx electron out/main/index.js`，而 `bunx` 会触发 electron 的惰性下载并自愈，
       # 于是 CI 恒绿、且永远会绿——`bun run dev` 起不来它一次都抓不到（110 附录 A.6）。
       # 现在先跑 ensure-electron（与 dev / start 同一条），再由 Playwright 起应用。
+      # 注意语法：`bun --filter <pkg> <script>`，**不带 run**——夹一个 run 进去会变成
+      # "No packages matched the filter"（首次 push 就是这么红的，本地已复现）。
       - name: 确保 electron 二进制就位（与 dev / start 同一条路径）
-        run: bun --filter @sepia/app run ensure-electron
+        run: bun --filter @sepia/app ensure-electron
 
       - name: smoke —— 冷启动打点与首帧主题
         run: xvfb-run -a bun run test:smoke
