@@ -55,6 +55,8 @@ const STEPS = [
   { id: 'deps', fast: false, cmd: ['bun', 'scripts/check-deps.mjs'], label: '依赖图' },
   { id: 'bridge', fast: false, cmd: ['bun', 'scripts/check-bridge.mjs'], label: 'preload 白名单' },
   { id: 'workspace', fast: false, cmd: ['bun', 'scripts/check-workspace.mjs'], label: 'workspace 边界' },
+  { id: 'artifacts', fast: false, cmd: ['bun', 'scripts/check-artifacts.mjs'], label: '引擎产物' },
+  { id: 'patches', fast: false, cmd: ['bun', 'scripts/check-patches.mjs'], label: 'patch 可复现' },
   { id: 'marks', fast: false, cmd: ['bun', 'scripts/check-marks.mjs'], label: '豁免记号' },
   { id: 'test', fast: false, cmd: ['bun', 'run', '--silent', 'test'], label: '单测' },
 ]
@@ -75,7 +77,16 @@ for (const step of steps) {
 
   process.stdout.write(`▸ ${step.id.padEnd(10)} ${step.label.padEnd(16)} ${ok ? '✓' : '✗'} ${seconds}s\n`)
   const body = combined.trimEnd()
-  if (body && (!ok || step.id === 'deps' || step.id === 'bridge' || step.id === 'workspace' || step.id === 'marks')) {
+  if (
+    body &&
+    (!ok ||
+      step.id === 'deps' ||
+      step.id === 'bridge' ||
+      step.id === 'workspace' ||
+      step.id === 'artifacts' ||
+      step.id === 'patches' ||
+      step.id === 'marks')
+  ) {
     process.stdout.write(`${body}\n`)
   }
   timings.push(`${step.id} ${seconds}s`)

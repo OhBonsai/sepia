@@ -6,10 +6,12 @@ import type { SepiaPaths } from './paths.ts'
 // `~/.sepia/config.json` 的读写。解析与合并的逻辑在 core（纯函数、可单测），
 // 这里只负责碰磁盘——**能不依赖 Electron 的逻辑一律下沉**（001 §2.1）。
 
-interface Loaded {
+export interface LoadedConfig {
   config: AppConfig
   unknown: Record<string, unknown>
 }
+
+type Loaded = LoadedConfig
 
 export async function loadConfig(paths: SepiaPaths): Promise<Loaded> {
   const read = await readTextIfExists(paths.config)

@@ -15,7 +15,7 @@ interface Bridge {
   perf: { mark(name: string): void }
 }
 
-// harness-exempt: 1 api.ts 是 window.api 之上的唯一封装，这里正是那个唯一出口
+// harness-exempt: 纪律 1 api.ts 是 window.api 之上的唯一封装，这里正是那个唯一出口
 const bridge = (globalThis as unknown as { api: Bridge }).api
 
 export const api = {

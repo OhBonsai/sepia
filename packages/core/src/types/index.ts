@@ -15,6 +15,16 @@ export type ResolvedTheme = 'light' | 'dark'
 export interface AppConfig {
   version: number
   theme: ThemeMode
+  /**
+   * 引擎 provider 的**定义**（Stage 3）：`npm` / `baseURL` / `models` 等非秘密字段，
+   * 形状即 opencode config 的 `provider` 段，随 `OPENCODE_CONFIG_CONTENT` 注入。
+   * **不含 apiKey**——密钥走 safeStorage 密文（`~/.sepia/credentials.json`），
+   * fork 时才与定义合流。自定义 openai-compatible provider 光有密钥没有定义是用不了的，
+   * 所以两者必须都在，但必须分开存。
+   */
+  provider: Record<string, unknown>
+  /** 默认模型，形如 `providerID/modelID`。为 null 表示用引擎侧默认。 */
+  model: string | null
 }
 
 /**
@@ -59,3 +69,20 @@ export const STARTUP_BUDGET_MS = {
 
 /** 保存与打开的结果。失败必须可见，不许静默（120 §1.3 功能深度表）。 */
 export type IoResult<T> = { ok: true; value: T } | { ok: false; reason: string }
+
+declare const BOOK_DIRECTORY: unique symbol
+
+/**
+ * book 根目录的品牌类型（纪律 10 类型化，002 §2.1 模式）。
+ * AgentBridge 的 `send` 只收它不收裸 string——**类型上没有不带 directory 的调用方式**。
+ * 唯一的构造入口是 `asBookDirectory`，绝对路径以外进不来。
+ */
+export type BookDirectory = string & { readonly [BOOK_DIRECTORY]: true }
+
+export function asBookDirectory(absolutePath: string): BookDirectory {
+  // 不引 node:path——core 要能在 renderer 与单测里跑。POSIX 与 win32 的绝对路径都认。
+  if (!/^(?:\/|[A-Za-z]:[\\/])/.test(absolutePath)) {
+    throw new Error(`BookDirectory 必须是绝对路径：${absolutePath}`)
+  }
+  return absolutePath as BookDirectory
+}

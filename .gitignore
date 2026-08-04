@@ -13,3 +13,6 @@ coverage/
 
 # Playwright smoke 的运行产物
 test-results/
+
+# 引擎产物（build-engine.ts 生成，真相在 vendor submodule 的锁定 tag）
+packages/app/engine/

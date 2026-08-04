@@ -101,6 +101,82 @@ if (exposeCalls === 0) {
 
 const surface = collected.toSorted()
 
+// ── 不变量级子条（140 §1.4 #2，110 §1.4 注①）：agent 域 == 五方法 + 状态/事件订阅 ──
+// 硬度是**不变量 3/4（AI 不抢笔 / Agent 没有写权限）**：这里不认 harness-exempt，
+// 多一个方法、或任何方法摸到 agent/* 之外的通道（比如复用 file/write），一律红。
+//
+// 两道：
+//   a. 方法集恰好等于白名单——「只是加一个」正是暴露面腐化的形态
+//   b. agent 域内出现的每个 IPC 通道字面量都必须在 agent/* 通道白名单里——
+//      防「方法名照旧、内部偷换通道」绕过 a
+{
+  const AGENT_METHODS = [
+    'api.agent.interrupt',
+    'api.agent.listModels',
+    'api.agent.onEvent',
+    'api.agent.onStatusChange',
+    'api.agent.openThread',
+    'api.agent.send',
+    'api.agent.status',
+    'api.agent.stream',
+  ]
+  const AGENT_CHANNELS = new Set([
+    'agent/open-thread',
+    'agent/send',
+    'agent/stream',
+    'agent/interrupt',
+    'agent/list-models',
+    'agent/status',
+    'agent/status-changed',
+    'agent/event',
+  ])
+
+  const actualMethods = surface.filter((key) => key.startsWith('api.agent.'))
+  for (const key of actualMethods) {
+    if (!AGENT_METHODS.includes(key)) {
+      report.add(
+        '不变量 3/4',
+        'agent 域必须恰好是五方法 + 状态/事件订阅',
+        `${FILE}（多出 ${key}）`,
+        '扩方法前先问能否用现有五个表达（架构 §4.3）；给 Agent 的写路径无豁免',
+      )
+    }
+  }
+  for (const key of AGENT_METHODS) {
+    if (!actualMethods.includes(key)) {
+      report.add('不变量 3/4', 'agent 域必须恰好是五方法 + 状态/事件订阅', `${FILE}（缺 ${key}）`)
+    }
+  }
+
+  // b：找到 agent 属性的对象字面量，收集其中所有字符串字面量里长得像 IPC 通道的
+  function agentChannelAudit(node) {
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name &&
+      ((ts.isIdentifier(node.name) && node.name.text === 'agent') ||
+        (ts.isStringLiteral(node.name) && node.name.text === 'agent')) &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      const visitLiterals = (inner) => {
+        if (ts.isStringLiteral(inner) && inner.text.includes('/')) {
+          if (!AGENT_CHANNELS.has(inner.text)) {
+            report.add(
+              '不变量 3/4',
+              'agent 域不得触达 agent/* 之外的 IPC 通道',
+              `${FILE}:${lineOf(inner)}`,
+              `'${inner.text}' 不在 agent 通道白名单里——这是给 Agent 开写路径的形态`,
+            )
+          }
+        }
+        ts.forEachChild(inner, visitLiterals)
+      }
+      visitLiterals(node.initializer)
+    }
+    ts.forEachChild(node, agentChannelAudit)
+  }
+  agentChannelAudit(source)
+}
+
 const snapshot = readJson(SNAPSHOT)
 const expected = snapshot.surface.toSorted()
 

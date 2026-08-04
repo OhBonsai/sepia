@@ -78,7 +78,10 @@ export default {
   forbidden,
   options: {
     doNotFollow: { path: '(^|/)node_modules(/|$)' },
-    exclude: { path: '(^|/)(node_modules|out|dist|coverage|vendor|\\.turbo)(/|$)' },
+    // `packages/app/engine` 是 vendor 的构建产物（build-engine.ts 复制到位的单文件 ESM），
+    // 与 `vendor/` 同性质——不是我们的代码，它的 import 图归引擎自己（纪律 15、16）。
+    // 它对产物齐全性的检查在 check:artifacts，不在这里。
+    exclude: { path: '(^|/)(node_modules|out|dist|coverage|vendor|engine|\\.turbo)(/|$)' },
     // 连 `import type` 也算边——类型依赖同样是依赖。
     tsPreCompilationDeps: true,
     enhancedResolveOptions: {

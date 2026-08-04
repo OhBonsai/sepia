@@ -31,12 +31,25 @@ jobs:
       # Day-1 不签名、不公证（架构 §1.3 非目标）。
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
+      # Stage 3 起打包需要引擎产物，而它出自 vendor submodule。
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
 
       - run: bun install --frozen-lockfile
+
+      - name: 缓存 vendor 依赖
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: vendor-bun-${{ hashFiles('vendor/opencode/bun.lock') }}
+          restore-keys: vendor-bun-
+
+      # prebuild 驱动 build-engine：产物是纯 JS + wasm（原生模块已归零，架构 §4.1），
+      # 所以三平台管线只是复制文件，不需要任何平台特化。
       - run: bun run build
 
       # 001 §5 原定「ubuntu 出 linux + win」。实测下来 AppImage 与 deb 都能出，

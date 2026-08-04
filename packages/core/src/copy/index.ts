@@ -11,6 +11,7 @@ export const copy = {
 
   'cmd.file.open': '打开…',
   'cmd.file.save': '保存',
+  'cmd.agent.summon': '召唤 Agent',
 
   'empty.hint': '还没有打开任何 page',
   'empty.open': '打开一个 .md',
@@ -29,6 +30,11 @@ export const copy = {
   'search.replace.all': '全部替换',
   'search.close': '关闭',
   'search.count.none': '无结果',
+
+  // W12：Agent 缺席。提示是细线不是弹窗——纸照常可写，这句话必须一直成立。
+  'agent.absent.line': 'Agent 缺席，纸照常可写',
+  'agent.k.absent': 'Agent 缺席。纸照常可写，稍后再试 ⌘K',
+  'agent.k.starting': 'Agent 正在就位…',
 } as const
 
 export type CopyKey = keyof typeof copy

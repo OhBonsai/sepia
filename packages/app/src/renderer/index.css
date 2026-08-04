@@ -40,6 +40,28 @@ body {
   border-bottom: 1px solid var(--sepia-rule);
 }
 
+/* W12：Agent 缺席的**细提示线**——一条线的存在感，不弹窗、不占版面。 */
+.sepia-agent-line {
+  padding: 2px 16px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+/* ⌘K 的状态文案：短暂出现自行消失（Stage 3 只到状态，浮层归 Stage 4）。 */
+.sepia-agent-hint {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  pointer-events: none;
+}
+
 .sepia-empty button {
   padding: 6px 14px;
   font: inherit;
