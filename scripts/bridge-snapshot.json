@@ -2,12 +2,24 @@
   "comment": [
     "preload 暴露面的白名单快照（纪律 2）。",
     "packages/app/src/preload/index.ts 每加一个 key，这里必须同步加一行，否则 check:bridge 红。",
-    "这份文件存在的全部意义，是让暴露面的增长必须出现在 diff 里——单看每一次都'只是加一个'。"
+    "这份文件存在的全部意义，是让暴露面的增长必须出现在 diff 里——单看每一次都'只是加一个'。",
+    "",
+    "Stage 1 的一次真实增长：从 4 项只读事实变成 12 项，其中 api.file.write 是 renderer",
+    "第一次获得写盘能力。它是 ⌘S 全文保存专用通道；Stage 4 的落笔必须另开区间写通道",
+    "（只接受 {range, expectedText}），且在类型/模块边界上够不到这一条——见 120 §1.3。"
   ],
   "surface": [
     "api.app.platform",
     "api.app.versions.chrome",
     "api.app.versions.electron",
-    "api.app.versions.node"
+    "api.app.versions.node",
+    "api.dialog.openMarkdown",
+    "api.file.read",
+    "api.file.write",
+    "api.perf.mark",
+    "api.session.get",
+    "api.session.set",
+    "api.theme.get",
+    "api.theme.onChange"
   ]
 }

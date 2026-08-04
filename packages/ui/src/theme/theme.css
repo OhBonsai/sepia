@@ -1,0 +1,59 @@
+/* 调色板——**整个仓库唯一允许出现字面色值的地方**。
+   变量名的另一份副本在 vars.ts（只有名字，没有色值）。
+
+   两层来源，顺序有意义：
+   1. `@media (prefers-color-scheme)` 给出跟随系统的默认值 —— 它在**首帧就生效**，
+      不需要等任何 JS。这是「无白闪」的第一道保险（纪律 13）。
+   2. `[data-theme]` 属性覆盖 —— 用户在 config.json 里显式选了亮/暗时才用得上，
+      由 preload 在首帧前落到 <html>。
+   顺序反了就会出现「显式设了暗色、系统是亮色，结果闪一下亮的」。 */
+
+:root {
+  --sepia-paper: #fbfaf7;
+  --sepia-ink: #1f1d1a;
+  --sepia-ink-muted: #6b6660;
+  --sepia-rule: #e4e0d8;
+  --sepia-selection: #d8e6f2;
+  --sepia-caret: #1f1d1a;
+  --sepia-danger: #9b2c1f;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sepia-paper: #1b1a18;
+    --sepia-ink: #e8e4dc;
+    --sepia-ink-muted: #918b82;
+    --sepia-rule: #322f2b;
+    --sepia-selection: #2c3d4d;
+    --sepia-caret: #e8e4dc;
+    --sepia-danger: #e07c6c;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='light'] {
+  --sepia-paper: #fbfaf7;
+  --sepia-ink: #1f1d1a;
+  --sepia-ink-muted: #6b6660;
+  --sepia-rule: #e4e0d8;
+  --sepia-selection: #d8e6f2;
+  --sepia-caret: #1f1d1a;
+  --sepia-danger: #9b2c1f;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --sepia-paper: #1b1a18;
+  --sepia-ink: #e8e4dc;
+  --sepia-ink-muted: #918b82;
+  --sepia-rule: #322f2b;
+  --sepia-selection: #2c3d4d;
+  --sepia-caret: #e8e4dc;
+  --sepia-danger: #e07c6c;
+
+  color-scheme: dark;
+}

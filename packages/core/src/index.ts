@@ -1,6 +1,9 @@
 // @sepia/core —— 锚点、config、跨进程契约类型、界面文案。
 // 叶子包：不 import 任何进程侧代码（结构 3），可被 main / renderer / 单测直接使用。
 //
-// Stage 1 起长出 types/ copy/ anchor/ config/，见 001_boot.md §2.1。
+// `anchor/` 归 Stage 5，本 stage 不建。
 
-export {}
+export * from './types/index.ts'
+export * from './copy/index.ts'
+export * from './config/defaults.ts'
+export * from './config/session.ts'

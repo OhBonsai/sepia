@@ -8,6 +8,10 @@
       "packages/*"
     ],
     "catalog": {
+      "@codemirror/commands": "^6.10.4",
+      "@codemirror/state": "^6.7.1",
+      "@codemirror/view": "^6.43.7",
+      "@playwright/test": "^1.62.1",
       "@swc/core": "^1.15.47",
       "@types/node": "^22.20.1",
       "@types/react": "^19.2.18",
@@ -29,6 +33,7 @@
     "lint": "bun scripts/check-discipline.mjs && oxlint --quiet",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:smoke": "playwright test",
     "check": "bun scripts/check.mjs",
     "check:fast": "bun scripts/check.mjs --fast",
     "check:deps": "bun scripts/check-deps.mjs",
@@ -37,6 +42,7 @@
     "check:marks": "bun scripts/check-marks.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "catalog:",
     "dependency-cruiser": "^18.1.1",
     "oxlint": "^1.77.0",
     "turbo": "^2.10.8",

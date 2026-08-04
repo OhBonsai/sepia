@@ -1,6 +1,8 @@
-// @sepia/ui —— 主题变量与 shadcn 组件。叶子包：零内部依赖，不知道领域概念。
+// @sepia/ui —— 主题变量与组件。叶子包：零内部依赖，不知道领域概念。
 // 徽章、线程条目这类知道领域的组件归 app，不许下沉到这里。
 //
-// Stage 1 起长出 theme/ components/，见 001_boot.md §2.1。
+// theme.css 由消费者显式 import（`@sepia/ui/theme.css`），不在这里副作用式引入——
+// 那会让任何 import 这个包的单测都被迫解析 css。
 
-export {}
+export { type ThemeVar, type ThemeVarName, themeVar } from './theme/vars.ts'
+export { Loading, type LoadingProps } from './components/loading.tsx'

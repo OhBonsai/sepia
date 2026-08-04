@@ -1,31 +1,42 @@
 import { join } from 'node:path'
 
-import { BrowserWindow, nativeTheme, shell } from 'electron'
+import { BrowserWindow, shell } from 'electron'
 
-import * as registry from './registry'
+import { mark } from '../services/perf.ts'
+import * as theme from '../services/theme.ts'
+import * as registry from './registry.ts'
 
 // 纪律 13：窗口带 backgroundColor，主题在首帧前就位，避免白闪。
-// Stage 1 会把这两个色值换成 theme service 的真相来源；此处是最小占位。
-const BACKGROUND = { dark: '#1c1c1c', light: '#ffffff' } as const
+// 背景色与 renderer 的变量表**由同一份真相派生**（services/theme.ts），
+// Stage 0 那个写死在这里的二元判断已被替换。
 
 export function createWindow(): BrowserWindow {
+  const resolved = theme.resolved()
+
   const window = new BrowserWindow({
     width: 1080,
     height: 720,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light,
+    backgroundColor: theme.backgroundColor(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // 首帧主题走 argv 同步传给 preload，**不走 IPC**——IPC 是异步的，
+      // 天然晚于首帧，而纪律 13 要的就是"首帧之前"。
+      additionalArguments: [`--sepia-theme=${resolved}`],
     },
   })
+  mark('t2')
 
   registry.register(window)
   window.on('closed', () => registry.unregister(window.id))
 
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => {
+    window.show()
+    mark('t3')
+  })
 
   // 外链一律交给系统浏览器，不在应用内开窗。
   window.webContents.setWindowOpenHandler(({ url }) => {

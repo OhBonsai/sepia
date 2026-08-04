@@ -10,3 +10,6 @@ coverage/
 
 .DS_Store
 *.log
+
+# Playwright smoke 的运行产物
+test-results/

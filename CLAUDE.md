@@ -66,6 +66,9 @@ bun run check        # stage 收尾。全量，最后一行必须是 PASS
 FAIL: 纪律 3（组件与 CM6 扩展不得出现字面色值）— packages/app/src/renderer/shell/App.tsx:2
 ```
 
+例外：**typecheck 红了不报纪律号**（`tsc` 不认识编号体系）。先看是不是动了 `CopyKey`（纪律 5）
+或 `ThemeVar`（纪律 3）——类型层的两条纪律只会以普通 TS 报错的样子出现。
+
 ## 卡住协议
 
 连续两次都无法在不违反纪律的前提下完成 → **停下，不要第三次。**

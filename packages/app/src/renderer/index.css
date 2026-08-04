@@ -1,6 +1,6 @@
-/* Stage 0 只保证一件事：窗口是空的、不闪白。
-   真正的主题变量表是 Stage 1 的事，住在 @sepia/ui/theme。
-   这里用 CSS 系统色关键字，跟着系统深浅色走，不引入任何字面色值。 */
+/* 主题变量表来自 @sepia/ui —— **色值只在那一个文件里**（纪律 3）。
+   这里只用 var(...)，一个字面色值都不许出现。 */
+@import '@sepia/ui/theme.css';
 
 html,
 body,
@@ -10,7 +10,40 @@ body,
 }
 
 body {
-  background: Canvas;
-  color: CanvasText;
+  background: var(--sepia-paper);
+  color: var(--sepia-ink);
   font: 16px/1.6 system-ui, sans-serif;
+}
+
+.sepia-shell,
+.sepia-editor,
+.sepia-editor .cm-editor {
+  height: 100%;
+}
+
+.sepia-loading,
+.sepia-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-error {
+  padding: 8px 16px;
+  color: var(--sepia-danger);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-empty button {
+  padding: 6px 14px;
+  font: inherit;
+  color: var(--sepia-ink);
+  background: transparent;
+  border: 1px solid var(--sepia-rule);
+  border-radius: 2px;
+  cursor: pointer;
 }

@@ -13,10 +13,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "ensure-electron": "node -e \"require('electron')\"",
+    "dev": "bun run ensure-electron && electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "start": "bun run ensure-electron && electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

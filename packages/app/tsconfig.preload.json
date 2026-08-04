@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // preload 是第三种运行时：它有 node 的 process、也有渲染进程的 document，
+    // 但两边都只有一部分（sandbox 下 process 是阉割过的 polyfill）。
+    // 挤进 main 的 tsconfig 会让 main 平白拿到 DOM 全局——那是错的，所以单列一份。
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/preload/**/*.ts"]
+}
