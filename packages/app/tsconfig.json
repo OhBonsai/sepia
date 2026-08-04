@@ -1,0 +1,7 @@
+{
+  // app 横跨两个运行时，所以拆两份：node 侧（main + preload）与 web 侧（renderer）。
+  // 这是「renderer 与 main 之间没有直接 import」（结构 4）的类型层地基——
+  // 它们连全局类型都不共享。`bun run typecheck` 两份都跑。
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}

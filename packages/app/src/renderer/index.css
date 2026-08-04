@@ -1,0 +1,16 @@
+/* Stage 0 只保证一件事：窗口是空的、不闪白。
+   真正的主题变量表是 Stage 1 的事，住在 @sepia/ui/theme。
+   这里用 CSS 系统色关键字，跟着系统深浅色走，不引入任何字面色值。 */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: Canvas;
+  color: CanvasText;
+  font: 16px/1.6 system-ui, sans-serif;
+}

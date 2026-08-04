@@ -1,0 +1,12 @@
+node_modules/
+out/
+dist/
+.turbo/
+.vite/
+coverage/
+
+# SEPIA_HARNESS_BYPASS 的留痕（002 §5.2）。只在本地产生，不进版本库。
+.harness-bypass.log
+
+.DS_Store
+*.log

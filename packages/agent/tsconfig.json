@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // 跑在 renderer：走 fetch / SSE，不碰 node（结构 3）。
+    "types": []
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

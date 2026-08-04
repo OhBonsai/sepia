@@ -1,0 +1,9 @@
+# workspace 范围由 package.json 的 `workspaces.packages` 决定。
+# vendor/ 刻意留在 packages/ 之外，不被任何 glob 匹配（纪律 16）——
+# 由 `bun run check:workspace` 守卫，改 glob 会被它抓住。
+
+[install]
+# 工作区内部包一律走本地链接，不去 registry 找同名包。
+linkWorkspacePackages = true
+# 依赖写进 package.json 时保留 caret，精确版本由 bun.lock 锁定。
+exact = false

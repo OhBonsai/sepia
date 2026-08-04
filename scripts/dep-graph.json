@@ -1,0 +1,40 @@
+{
+  "comment": [
+    "001_boot.md §2.2 的依赖图，机器可读的唯一副本。",
+    "check:deps 从这里派生两件事：(a) 各包 package.json 声明的 @sepia/* 边必须与 edges 完全相等；",
+    "(b) 实际 import 图不得出现 edges 之外的跨包边。",
+    "图变了就改这个文件，改这个文件就会被 diff 看见。"
+  ],
+  "scope": "@sepia",
+  "packages": ["core", "editor", "agent", "ui", "app"],
+  "edges": {
+    "core": [],
+    "editor": ["core"],
+    "agent": ["core"],
+    "ui": [],
+    "app": ["core", "editor", "agent", "ui"]
+  },
+  "deliberateNonEdges": [
+    {
+      "from": "editor",
+      "to": "ui",
+      "why": "CM6 主题只写 var(...)，两侧共享变量名而不共享代码（T-20）"
+    },
+    {
+      "from": "editor",
+      "to": "agent",
+      "why": "widget 要用 AI 时能力上提到 app 装配，不在中间层横向连线"
+    },
+    {
+      "from": "ui",
+      "to": "core",
+      "why": "ui 是叶子、不知道领域；连 core 的类型与文案都不该知道"
+    }
+  ],
+  "electronOwner": "app",
+  "notes": [
+    "app → core 这条边在 001 §2.2 的 ASCII 图里没有单独画出（那是层次图，core 经 editor/agent 抵达 app），",
+    "但 §2.2「包内」明确要求 main/services → core、renderer 组件 → core/copy，因此它是真实且必需的边。",
+    "此处显式登记，并已回 001 §2.2 标注。"
+  ]
+}

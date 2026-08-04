@@ -1,0 +1,20 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "tasks": {
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["src/**", "test/**", "tsconfig*.json", "../../tsconfig.base.json"],
+      "outputs": []
+    },
+    "test": {
+      "inputs": ["src/**", "test/**", "tsconfig*.json"],
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "electron.vite.config.ts", "tsconfig*.json"],
+      "outputs": ["out/**"]
+    }
+  }
+}

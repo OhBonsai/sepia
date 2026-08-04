@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CI 恒忽略 SEPIA_HARNESS_BYPASS（002 §5.2）。这里显式清空，
+  # 免得它从别处（比如 repository variables）漏进来。
+  SEPIA_HARNESS_BYPASS: ''
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      # 唯一入口，与本地跑的是同一条命令（002 §3）。
+      - run: bun run check
+
+  build-smoke:
+    name: build + 空窗口
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: electron-vite 三段构建
+        run: bun run build
+      # Stage 0 的验收：真的能开出一个空窗口。
+      # SEPIA_SMOKE_EXIT=1 让主进程在首帧加载完后自行退出。
+      - name: 开一个空窗口再退出
+        working-directory: packages/app
+        env:
+          SEPIA_SMOKE_EXIT: '1'
+        run: xvfb-run -a bunx electron out/main/index.js --no-sandbox
+
+      # check:artifacts（wasm 四份齐全、零 .node）随 Stage 3 的 vendor 构建一起加，
+      # 现在没有 vendor 产物可查，加了也抓不到东西（002 §6.2）。

@@ -1,0 +1,13 @@
+{
+  "comment": [
+    "preload 暴露面的白名单快照（纪律 2）。",
+    "packages/app/src/preload/index.ts 每加一个 key，这里必须同步加一行，否则 check:bridge 红。",
+    "这份文件存在的全部意义，是让暴露面的增长必须出现在 diff 里——单看每一次都'只是加一个'。"
+  ],
+  "surface": [
+    "api.app.platform",
+    "api.app.versions.chrome",
+    "api.app.versions.electron",
+    "api.app.versions.node"
+  ]
+}

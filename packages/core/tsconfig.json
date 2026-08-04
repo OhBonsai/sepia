@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    // core 的外部依赖趋近于零：拿不到 node / dom 的全局类型，
+    // 写 `process` 或 `document` 当场编译不过（结构 3）。
+    "types": []
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -1,0 +1,38 @@
+appId: com.sepia.notebook
+productName: Sepia
+copyright: Sepia
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# Day-1 不签名、不公证、不自动更新（架构 §1.3 非目标）。
+# identity: null 让 electron-builder 别去钥匙串找证书，否则本地构建会挂。
+mac:
+  category: public.app-category.productivity
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Office
+  target:
+    - AppImage
+    - deb

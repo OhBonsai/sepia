@@ -1,0 +1,76 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS 双 arch 在同一台机器上出（electron-builder.yml 里声明了 x64 + arm64）。
+          - { os: macos-latest, name: macOS (x64 + arm64), targets: --mac }
+          # linux 与 win 都从 ubuntu 出；win 的 nsis 走 wine。全部未签名。
+          - { os: ubuntu-latest, name: Linux + Windows, targets: --linux --win }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: wine（ubuntu 出 win 包要用）
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine64 wine32
+
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+      - name: electron-builder
+        working-directory: packages/app
+        env:
+          # Day-1 不签名、不公证（架构 §1.3 非目标）。
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: bunx electron-builder ${{ matrix.targets }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sepia-${{ matrix.os }}
+          path: |
+            packages/app/dist/*.dmg
+            packages/app/dist/*.AppImage
+            packages/app/dist/*.deb
+            packages/app/dist/*.exe
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # main push 覆盖发 alpha-latest prerelease，tag 发正式 release，共用同一构建产物。
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'alpha-latest' }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          files: artifacts/**
