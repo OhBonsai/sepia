@@ -1,0 +1,149 @@
+# Sepia · MVP 功能清单与决策记录
+
+> 状态：定稿 ｜ 2026-08-02（2026-08-03 技术架构阶段回写：D-38~D-40 新增，D-04／D-13／D-22 加修订指针） ｜ 上游文档：《笔记本Agent设计思路》
+> 流程：产品细节 → 交互原型 → 技术架构 → ultra spec → Claude Code 实施
+>
+> 本目录文档分工：**[`sepia-mvp-happy-path.md`](./sepia-mvp-happy-path.md) 是 MVP 的真理源**（分镜决定做什么）；[`sepia-mvp-non-goals.md`](./sepia-mvp-non-goals.md) 是反清单（决定不做什么）；本文档是决策记录（为什么这么做）；畅想类 draft 在 [`../mind/`](../mind/)（不排期）。目录分工总规则见 [`../../CLAUDE.md`](../../CLAUDE.md)。
+>
+> **范围**：MVP 阶段文档只讨论**功能与使用习惯**。技术/运维决策（构建矩阵、CI、发布、测试投入等）在技术架构阶段另立文档；本文档中出现的技术选型（D-02 内核、D-03 壳、D-04 引擎等）之所以在此，是因为它们直接决定交互形态。
+
+---
+
+## 0. 一句话定位
+
+**Sepia 是一张会越用越懂你的纸**：单人、本地、git 打底的 markdown 笔记本，把 opencode 当 Agent 嵌进纸里——对话不占纸面，痕迹不丢。
+
+## 1. 三条产品原则（一切争议回到这里裁决）
+
+1. **白纸**——打开即写，文件即真相（纯 .md，无私有语法），功能做减法。
+2. **痕迹**——书写与思考的过程被克制地记录：微观是徽章，宏观是思维链；只记不扰。
+3. **克制**——AI 是笔不是主角；记忆只学书写、不管生活；任何智能都可一键隐身。
+
+---
+
+## 2. MVP 功能清单
+
+### A. 纸（书写）
+
+| # | 功能 | 交互形式 |
+|---|---|---|
+| A1 | 源码态 live preview 编辑器 | 写 `**粗**` 直接显示粗体，光标进入才露语法（Obsidian 手感）。MVP 装饰范围：标题/粗斜体/代码块 + 三个组件 widget，表格链接后补 |
+| A2 | 文件即真相 | 纯 .md + 标准围栏，任何编辑器可开；Sepia 不改写用户字节 |
+| A3 | 白纸启动 | 打开即上次的纸或新纸；无 dashboard、无引导页 |
+| A4 | 库 = 文件夹 = git repo | Sepia 静默 commit（落笔/保存时）；diff、历史、回滚全部来自 git |
+| A5 | 文件树侧栏 | 一键全收起，收起后就是纯纸 |
+
+### B. 组件（`/` 唤起）
+
+| # | 功能 | 交互形式 |
+|---|---|---|
+| B1 | `/` 组件菜单 | MVP 仅两项：`/textdiagram`、`/image`（`/shader` 移至 v2，D-27） |
+| B2 | mermaid 块 | ```` ```mermaid ```` 围栏；编辑时代码、失焦渲染成图 |
+| B4 | 图片 | 粘贴/拖入 → 自动落 `1mg/` → 生成标准 `![]()` 引用 |
+
+### C. Agent（AI）
+
+| # | 功能 | 交互形式 |
+|---|---|---|
+| C1 | markup 对话 | 选中 → `Cmd+K` → 原地浮层对话 → 提案以 diff 预览 → 应用/放弃 |
+| C2 | 徽章 | 应用后段落边缘留小点（Figma 评论式）；点开 = 对话过程 + 该段 diff |
+| C3 | 线程面板 | 本篇徽章总账列表；一键隐藏全部徽章还纸于白 |
+| C4 | `@content` | 对话中 @ 库内其他笔记作为 context |
+| C5 | 模型切换 | 对话浮层内切换（读 opencode provider 列表，默认跟 opencode 配置） |
+| C6 | 可打断 | 生成中 Esc 中止 |
+
+### D. 思维链（trace）—— **整体移出 MVP**（D-24）
+
+trace 记录推迟到 v2；徽章 diff 改由 C2 + D-19 承担（从 git 成对 commit 取，不依赖 trace）。schema 设计（D-21）保留，实施推迟。
+
+### E. 记忆 —— MVP 一个字节都不学（整体 v2，见 §3）
+
+### F. 壳
+
+| # | 功能 | 交互形式 |
+|---|---|---|
+| F1 | Electron + opencode sidecar | 主进程 spawn `opencode serve`，渲染层 HTTP + SSE |
+| F2 | 极简设置 | 仅三项：库路径、opencode 路径、端口 |
+
+## 3. v2 预留（数据格式第一天就兼容）
+
+- **发布管线（v2 第一优先，明确要做）**：OSS 上传 + shader→GIF + 公众号格式转换 + 底部链接模板 + 草稿箱直投，详见 [`feature-v2-001-wechat-publish.md`](./feature-v2-001-wechat-publish.md)
+- **B3 shader 块**（D-27 移出 MVP）：```` ```glsl ```` 围栏 → 实时 WebGL 预览；uniform 约定已定（D-20）；v1 中 glsl 围栏按普通代码块显示（无害）。与 feature-v2-001 的 shader→GIF 同期实施
+- **D1 思维链 trace 记录**（D-24 移出 MVP）：jsonl 边日志照 D-21 的 schema 实施；v1 期间由 git 历史 + threads json + opencode session 三处存档兜底，可事后部分重建
+- **B5** 组件插件化（第三方注册 `/xxx`）
+- **C7** `@agent` 召唤具名 subagent
+- **C8** 后台任务（deep research 走 opencode background，完成挂徽章进面板）
+- **D3** 宏观时间线 / 思维网可视化（思维是树，探索成网；可视化形态自行设计，edgeless 画布是候选。**TODO**）
+- **E** 记忆整个模块：分时记忆·异步确认（默默攒候选偏好，隔时批量给用户批）；风格档案按谱系分三份（技术文/杂文/产品思辨）；markup diff（AI 提案 → 用户终稿）是核心学习信号；硬边界：只学书写，生活一概不进
+- 徽章锚点按「位置映射」而非字符偏移设计，为将来 CRDT/多端留口子
+
+## 4. 明确不做（non-goals）
+
+多人协作与 CRDT 同步、账号与云端、移动端、语音输入、发布管线（已有 pinzai-publish/wechat-publish 体系）、用户画像式记忆。
+
+---
+
+## 5. 决策记录
+
+| # | 决策 | 备选项 | 结论与理由 |
+|---|---|---|---|
+| D-01 | **不 fork 完整 App，薄壳自建** | fork MarkText（2026 已复活，v0.19/v0.20β） | fork 立得完整 App，但绑定 Muya 引擎（文档薄、自定义块深绑定）、十万行别人的决策、上游越活跃 fork 税越重。白纸哲学要求做减法，减法在别人架构里比加法难 |
+| D-02 | **编辑器内核 = CodeMirror 6 live preview** | Milkdown（WYSIWYG）/ BlockSuite | 核心论据是**坐标系数量**：CM6 内容=文件本身，选区/徽章锚点/思维链 ref/git diff 同一坐标系，CM6 自带位置映射。WYSIWYG 是双坐标系（ProseMirror 树 ↔ md 投影），序列化会规范化用户字节 → git diff 被噪音污染、思维链信号变脏。BlockSuite 真相源是 Yjs CRDT 二进制，与 A2「文件即真相」直接冲突，且为用不到的协作付全部复杂度。第一天 WYSIWYG 简单，第一百天 live preview 简单。装饰层糙的方式安全（露出裸 md 仍可写），WYSIWYG 糙的方式是改坏数据 |
+| D-03 | **壳 = Electron** | Tauri / 纯 Web | 对齐 opencode desktop 架构（Electron + sidecar server），未来借代码/借模式最顺 |
+| D-04 | **AI 引擎 = opencode，Sepia 只是客户端**（**部署形态已修订 → T-01**：从「外部 `opencode serve` 进程」改为「源码 vendor + 构建成 node 产物 + 在 Electron utilityProcess 内 import 启动」，单安装包、无外部依赖；「Sepia 只是客户端」与 HTTP+SSE 通信不变） | 自接 LLM API | `opencode serve` 暴露 HTTP + SSE（默认 4096，OpenAPI 3.1）；session/message/provider/背景任务全部现成，agent 生态白嫖。已实测 API 形状（`POST /session`、`POST /session/:id/message`，支持 `system`、`model{providerID,modelID}`、`parts`） |
+| D-05 | **对话形态 = 对话即批注（markup）** | 对话入正文（Jupyter 式）/ 纯指令（Cursor 式）/ 侧栏 chat / chat 作为页面类型（AppFlowy 式） | 选中→原地对话→落笔进正文，过程留徽章。徽章既是入口也是归档：纸保持白（可一键全隐），过程不丢。AppFlowy 是对话为主文档为客，Sepia 反之，故不做 chat 页面 |
+| D-06 | **快捷符号只留两个** | `/` `@` `#` 三件套 | `/` = 组件唤起器（非 AI 命令）；`@` = 链接（`@content` 引内容、`@agent` 引 Agent）；`#` 砍掉。AI 唯一入口 = 选中 + 快捷键，符号少即克制 |
+| D-07 | **思维链 = 只记边，后置分析** | 实时理解/实时展示 | 思维是树、探索成网；MVP 只 append ref（jsonl，node/edge 格式），链的分析与可视化后置。展示不进 MVP |
+| D-08 | **版本 = 真 git** | 自建快照 | 用户库本来就是文件夹；git 白给 diff/历史/回滚，与现有 art 目录习惯无缝 |
+| D-09 | **记忆 = 分时记忆·异步确认，MVP 不做** | 实时学习/每条确认/只显式记 | 写作时默默攒，异步批量确认（不打断心流是底线）。学习信号首选 markup diff 而非对话。按谱系分档案。MVP 砍掉是为保 markup 完成度 |
+| D-10 | **存储 = md + `.sepia/` sidecar，无数据库** | SQLite 等 | 思维链本身是语料，人类可读的 sidecar 让未来 agent 能直接拿它学脑回路 |
+| D-11 | **C5 模型切换提进 MVP；C8 后台任务放 v2** | — | 模型切换：opencode 现成接口，工程近零、价值大（学自 AppFlowy）。后台任务：牵扯任务生命周期管理，MVP 里会偷走 markup 完成度 |
+| D-12 | **Session 粒度：1 徽章 = 1 thread = 1 opencode session** | 单文章一个 session / 全库一个 session | 对话归档免费（徽章存 sessionID，点开=回放 session）；并行 markup 天然不阻塞；放弃/撤销互相独立；同徽章续聊回同一 session。跨 markup 的"知道这篇文章其他改动"靠**显式喂 context**（文档本体随请求带上），不靠 session 累积——隐式记忆脏、贵、不可控，违反克制原则 |
+| D-13 | **Tool 权限：闭手/开手两级，纸只有用户能写**（**第二级的实现形态已修订 → T-19**：permission deny 不再落在 book 根的 `opencode.json`，改由 Sepia 在启动引擎时用 `OPENCODE_CONFIG_CONTENT` 内存注入——book 里不出现与笔记无关的文件，且用户侧无法误改误删这道锁；两级权限模型本身不变） | 直接放开 agent 工具 | 闭手（MVP 全部）：markup 调用 `tools` 全关 + system 锁定"只返回文本"，context 由 Sepia 显式喂（选区+前后文+@content 文件内容），纯文本进出。开手（v2，@agent/后台 research）：只读工具+webfetch 放开，**写权限永远不给**，产出一律走"徽章提案→用户落笔"。双保险：book 根放 `opencode.json` 在 permission 层 deny edit/bash，Sepia 忘关工具时 opencode 兜底 |
+| D-14 | **概念区隔：Sepia 不发明概念，只映射概念** | 自建 workspace/插件/记忆体系 | **book = opencode project**（一个文件夹 = git repo = serve 的 cwd），scope 以 book 为界。映射：provider/plugin/skill → opencode 全局，Sepia 不碰；model → per-message 参数，Sepia 只管切换 UI；tool → per-session 开关 + book 级 permission；agent 人格 → book 根 `AGENTS.md`（Sepia 生成维护）；具名 agent → `.opencode/agent/*.md`（v2）；记忆 → `.sepia/memory/*.md` 挂进 AGENTS.md 生效（v2，复用 opencode 注入通道）。**Sepia 自己只发明两样东西：徽章和思维链**（`.sepia/trace.jsonl`） |
+| D-15 | **AgentBridge 收窄接口，MVP 绑 opencode，ACP 留作 v3** | 现在就上 ACP（Zed 的 Agent Client Protocol）/ 自建 provider 抽象（cc-switch 式） | provider 层通用性 opencode 已解决（75+ 家、按消息指定模型），再包一层是叠床架屋。agent 层通用性的正解是 ACP（CC/Gemini CLI 均有 adapter，协议原语 session/diff/权限与 markup 天然同构），但现在上要交协议税、丢 opencode 红利（provider 列表、session 持久化、background）。做法：Sepia 代码只允许通过 AgentBridge 内部接口（openThread / send / stream / interrupt / listModels 五个方法）碰 agent，v3 要通用时给接口写 ACP 实现，编辑器一行不改 |
+| D-16 | **MVP 锁单 book** | 多 book 并存 | 一实例一 book，换 book 重开。多 book 牵扯多引擎实例管理，v2 再放开 |
+| D-17 | **AGENTS.md 暂时留空** | 现在就写改写引擎人格 | 机制保留（book 根 AGENTS.md 是记忆与人格的注入通道），内容暂不设计，等 markup 跑起来再定 |
+| D-18 | **徽章锚点 = git 绑定位置 + 引文兜底，存 `.sepia/threads/<note>.json`** | markdown 扩展语法 / sqlite | md 扩展语法否决：违反 A2（无私有语法）与 D-14（只发明徽章和思维链），纸必须干净。sqlite 否决：违反 D-10（无数据库），数据量也够不着。锚点结构：`{commit, start, end, quote, prefix, suffix}`。三级对齐：Sepia 内编辑走 CM6 位置映射；外部改动（HEAD≠anchor.commit）按 git diff 做区间映射；再失败用引文+前后文模糊匹配；全失败降级为孤儿徽章进面板（对话与 diff 不丢，只失去纸上锚点）。W3C Web Annotation / Hypothesis 的经典方案，非自创 |
+| D-19 | **git commit 三触发：保存（防抖）、定时兜底、AI 对话前后成对** | 仅保存时 | `sepia: save` / `sepia: auto` / `sepia: pre-markup <threadId>` + `sepia: markup <threadId>`。前后成对 commit 夹出的 diff 恰好是徽章展示的 diff，D-08「diff 从 git 取」零成本落地；threadId 进 commit message，git 侧与 sidecar 侧双向可查 |
+| D-20 | **shader 块 uniform 对齐 ShaderToy** | 自定义 uniform 约定 | `iTime` / `iResolution` / `iMouse`，mainImage 签名同 ShaderToy。用户现有 shader 生态都在 ShaderToy，贴过来就能跑；对外分享也无翻译成本 |
+| D-21 | **思维链 = append-only 边日志（扁平 jsonl），图为读时视图** | 落盘即图结构（节点表+边表）/ TOML | `.sepia/trace.jsonl` 每行一条边，扁平短键 + `"kind:id"` 紧凑节点 ref：`{"ts":…,"t":"jump","from":"note:x.md","to":"note:y.md"}`。节点（note/frag/thread/url）由边引用推导，不建表。MVP 四种边：`jump`（注意力流动）/ `markup`（段落被讨论）/ `ref`（@引用）/ `apply`（落笔，带 commit）；v2 加 `spawn`。TOML 否决于日志：整文件解析、尾部写坏全毁、无一行一事件框架；jsonl 坏一行丢一行，可 tail 可流式。树、网、时间线都是后置分析折叠出的视图，存储不预设任何一种 |
+| D-22 | **文件格式总原则：机器流水账用扁平 jsonl，机器状态用 json**（**「人手碰的用 TOML」一条已改判 → T-02**：设置改为单一应用级 `config.json`，字段树镜像设置清单、只存与默认值的差异、容忍未识别字段；jsonl / json / md 三条不变） | 全 json / 全 toml | 设置 → `.sepia/config.toml`（库路径、opencode 路径、端口，人会手改）；思维链 → `trace.jsonl`；徽章锚点 → `threads/<note>.json`（机器维护的读写状态，人不手改）；记忆（v2）→ markdown（人要审要删） |
+| D-23 | **纸永远可写，Agent 可以缺席** | AI 不可用即降级提示阻断 | opencode 没装/没配 key/进程崩溃时，Sepia 退化为一个完整可用的 markdown 编辑器：写作、组件、图片、git、已有徽章回看全部正常，仅 ⌘K 给出「Agent 缺席」说明。sidecar 异步启动，永不阻塞白纸秒开（Aha #1） |
+| D-24 | **MVP = 可与 AI 交互的 markdown 书写器；trace 移出 MVP，发布管线为 v2 第一优先** | trace 进 MVP（原 D 模块） | 从原型本质出发：书写器 + markup 交互成立即为 MVP，trace 不改变其成立。v1 缺口有兜底：git 历史、`threads/*.json`、opencode session 三处已在存档，思维链可事后部分重建。发布管线（feature-v2-001）是用户明确要做的，排 v2 之首 |
+| D-25 | **living editing 揭示粒度 = 光标所在行内元素，非整段** | 点击段落整段翻源码 | 原型走查发现（2026-08-02）：整段翻源码体验差。定稿：无"渲染/源码"双模式，装饰随光标细粒度开合——光标进加粗词只露那对 `**`（灰、小半号、~120ms 淡入淡出），标题行仅行首露 `#`；选区跨元素时选区内标记全露；块级组件（代码/mermaid/shader/图片）保持聚焦编辑、失焦渲染；标记显隐不得引起文字重排抖动 |
+| D-26 | **markdown 标准快捷键集；⌘K 归 AI markup，链接让位 ⌘⇧K** | ⌘K 插入链接（Typora/Obsidian 传统） | toggle 式（选中包裹/解包；无选中插成对标记、光标居中）：⌘B 加粗、⌘I 斜体、⌘E 行内代码、⌘1~6 标题、⌘0 正文、⌘⌥C 代码块、⌘⌥Q 引用、⌘⌥U/⌘⌥O 列表、⌘⇧K 链接；Enter 续列表、空项回车退出、Tab/⇧Tab 缩进。**后续增补（以本表为准）**：⌘K 唤起 markup、Esc 中断、⌘⇧H 徽章还白、⌘⇧I 信息浮层（D-30）、⌘/ 快捷键看板（D-32）、**⌘, 打开设置**（macOS 惯例，同时进菜单栏）、⌘N 新建、⌘W 关闭标签、⌘P 搜索笔记、⌘+点击 双屏。⌘K 冲突裁决：AI 是一等公民，沿用 Cursor 世代肌肉记忆，传统链接键让位 |
+| D-27 | **shader 块移出 MVP** | 保留在 MVP（原 B3，"招牌菜"） | 用户 2026-08-03 定：MVP 不需要。glsl 围栏在 v1 按普通代码块显示（源码可见，无害裸奔），uniform 设计（D-20）保留待 v2 实施，与 feature-v2-001 的 shader→GIF 同期。`/` 菜单 MVP 剩两项：textdiagram、image |
+| D-28 | **多文件 Tab 栏翻案：完整版保留（以原型为准）** | 单纸（原 non-goals 诱惑表条目） | 用户 2026-08-03 定：原型走查后确认需要多 Tab。non-goals 对应条目撤销；MVP 衰减时再定去留。同轮裁决：设置中**不存在任何 Agent 权限项**（Agent 只输出内容，强化 D-13）；记忆范围三档、默认「当前笔记库」。完整设置树见 [`sepia-settings.md`](./sepia-settings.md) |
+| D-29 | **markup 浮层按阶段发家具；第一层=动词+输入，模型切换收进「重试」** | 一屏放齐所有控件（原型现状：1 个输入被 6 个控件包 3 行） | 用户 2026-08-03 走查判定「太复杂」。业界共识（Cursor ⌘K 单行输入无按钮、Notion AI 输入+动词列表、Apple 写作工具纯动词零输入）是**两层结构：动词在前、自由输入在后**，家具跟随阶段。定稿三阶段——**唤起**：仅一行输入（placeholder 即提示）+ 一列**随选中对象变化**的动词（文字/代码块/图片/标题/引用各一组），打字即隐藏动词；删除标签、Esc 按钮、发送按钮、模型选择器、快捷键提示行、建议 chip（Enter 即发送、Esc 即关闭，无需按钮复述）。**生成中**：一行流式状态 + 停止。**出结果**：diff + 落笔/放弃/重试，模型切换收进「重试」下拉（换模型只在不满意时发生）。连带效果：D-26 的 ⌘K 由此名副其实——按下即「唤起 Agent」，而非「弹出表单让你填」 |
+| D-30 | **不做常驻底部状态栏；信息按需浮现（⌘⇧I）+ 保存纸角微反馈** | 底部常驻状态栏（原型源码里备了数据：字数、折叠式快捷键提示） | 常驻底栏与白纸哲学冲突——多一条家具多一分噪音，而字数/保存状态是**偶尔查一次**的信息，不配占永久版面。定稿：①**信息浮层 ⌘⇧I**（⌘I 已归斜体，故用 ⌘⇧I，与 ⌘⇧H/⌘⇧K 同族）——右下角半透明卡片，字数/上次保存/commit 短 hash/Agent 状态/文件路径，再按或打字即淡出；②**保存微反馈**——写盘完成时纸的右下角极轻一闪（~600ms）后消失，无 toast 无文案；**平时无声，出事才留痕**：写盘或 commit 失败时同位置变持久警示点，可点开看原因。快捷键提示不常驻，收进信息浮层折叠区或设置页 |
+| D-31 | **术语统一为 Agent；双屏 markup 不自动带右栏 context** | 术语三选一（智力器 / 智能体 / Agent）；双屏时 ⌘K 自动把右栏内容加入上下文 | 用户 2026-08-03 定。①**术语**：文档与 UI 一律用 **Agent**（原「智力器」是文章里的自造词、「智能体」是原型设置导航用词，两者全部废止，已全库替换 42 处）；专名 AgentBridge、Agent Client Protocol 不变。②**双屏 context**：⌘K 只带选区及其前后文，**不因右栏开着就自动追加右栏内容**——上下文要显式（`@content`），隐式追加会让同一句指令在不同屏幕状态下产生不同结果，且用户不可预期地涨 token。将来若要，做成右栏一个显式的「加入上下文」开关，不做自动 |
+| D-32 | **快捷键看板（⌘/）：只读、分类、一屏不滚动、按上下文高亮** | 常驻底部快捷键条（D-30 已否）/ 只放在设置页 | 快捷键记不住是真实痛点，但解法不是常驻家具而是**按需唤起的看板**。⌘/ 唤起（Slack/Linear 同款；单键 `?` 在编辑器里会变成输入，不可用），Esc 或 ⌘/ 关闭；第二入口在 ⌘⇧I 信息浮层底部，承接 D-30 留的「快捷键提示收进折叠入口」。设计约束：①**一屏放下全部、不滚动**——滚动条出现即信号：快捷键太多该砍功能；②按五组分类（行内格式/块/Agent/文件与视图/行内触发）三列瀑布；③键帽用 1px 边框 + 等宽字体（圆角属样式，见 D-33）；④搜索即过滤、只隐藏不重排；⑤**按当前上下文高亮/置灰**，一眼回答「我现在能按什么」；⑥只读，改键去设置页 |
+| D-33 | **视觉样式整体推迟到线框走查之后再定；「全局无圆角 / 构成主义」不再是硬约束** | 沿用《笔记本Agent设计思路》里「不要圆角，构成主义，西伯利亚的冷与大练钢的热」作为贯穿始终的视觉铁律 | 用户 2026-08-03 定：设计中已去掉无圆角约束，**样式问题在线框图之后再确定**。此前所有文档里的「直角/无圆角/构成主义」表述一律降级为非约束（PROMPT、features、settings 已改）。原文那段视觉描述保留为**情绪参考**，不再作为可被引用来否决方案的规则。线框阶段只判断信息结构与交互，不判断视觉；样式（圆角、配色、字体、间距、强调色）待线框定稿后单独立一份视觉规范 |
+| D-34 | **对读 opencode desktop 的 General 页：采纳 5 项、明确不学 4 类** | 照搬其 General 页 / 完全不看 | 用户 2026-08-03 要求逐项比对。**采纳**：①**生成中再次发送 = 排队 / 立即转向**（其 Follow-up behavior 的 Queue/Steer——写作时追加指令是常态，这个选择必须给）；②**系统通知分类**（后台任务完成 / 出错），但砍掉其 permissions 一类（Sepia 无权限请求，D-13），且 markup 短任务不发通知；③**更新后显示更新说明**（What's New，默认关）；④**触控板双指缩放**；⑤更新检查的状态文案（检查中/下载中/安装中/已是最新）。**不学**：①**整套提示音库**（alert/bipbop/nope/yup——写作是安静的活，见 non-goals）；②**界面元素显隐开关群**（文件树/命令面板/状态按钮/导航按钮——每加一个「要不要显示 X」的开关就是承认 X 多余，正确做法是砍掉 X）；③终端 shell / Wayland 等平台项（Sepia 无终端）；④新旧布局切换与下线通知（单人产品无需迁移机制） |
+| D-35 | **「书写」二级重构为「笔 / 纸 / 伴」；Agent 一级收窄为引擎** | 原「编辑器 / 文件与链接」两页；Agent 一级含对话与记忆 | 用户 2026-08-03 提出更系统的划分。轴 = **动作 / 载体 / 同伴**。**笔** = 写字这个动作的能力（模式与语法揭示、输入、保存与版本、插入行为）；**纸** = 载体本身（版面、字体排印、纸面、笔记属性、库与附件、链接、窗口、删除）；**伴** = Agent 陪写的方式（唤起与动词、上下文、生成与呈现、风格、痕迹徽章、记忆）。三条推论：①**组件按「行为归笔、样式归纸」拆开**——mermaid 失焦渲染→笔、图表主题→纸；shader 预览开关→笔、代码高亮主题→纸；②**「伴」与一级「Agent」分层**——Agent 一级只管引擎（模型/技能/连接器/ACP），伴管引擎怎么陪你写（类比：打印机驱动设置 vs 文档打印选项）；原 Agent 下的对话页与记忆页迁入伴；③**外观类设置由 Desktop App 迁入纸**（配色/字体/缩放/窗口），Desktop App 只留应用行为（语言/启动/通知/更新）。四个一级名称不变。命名同时呼应产品源头那句「我只要有一支笔、一张纸就可以画画了」 |
+| D-36 | **模型配置只透出「模型」一个概念；用途指派按能力过滤，候选含 MCP 工具** | provider + model 两级（opencode desktop 的做法） | 用户 2026-08-03 判定双层不好。理由：**provider 是引擎的内部结构，不是用户的心智**——用户想的是「我有哪些模型可用」而非「我签约了哪几家」；多模态到来后按家分组更糟（要在 5 个 provider 里翻谁能画图），**能力才是分类轴，出处不是**。定稿：①**一个扁平模型列表**，每行 = 模型名 + 能力标签（文本/视觉/出图/转写/出视频，由目录元数据自动带出）+ 出处灰字 + 状态点；②**添加模型是单一流程**——搜目录→选中→若该来源无凭据就地要一次→完成，不存在「先加提供方再选模型」；③**凭据降级**为折叠的「已保存的登录」，平时不占版面；④**用途指派表**（改写/快速改写/配图生成/语音转写/视频生成/不可用时回退），每个下拉**按能力标签过滤**，用户配不错；⑤**用途候选可以是模型，也可以是 MCP 工具**——用途绑定「谁来干这活」，不关心是模型调用还是工具调用，将来接绘图/TTS 类 MCP 自动出现在对应候选里，不需新造设置。内部仍是 providerID/modelID，仅 UI 不透出 |
+| D-37 | **删除 ACP 设置页；技能与连接器页按「可读性优先」重做** | 保留 ACP 二级页（默认智能体 / 进程 / 环境变量 / 协议日志） | 用户 2026-08-03 在原型 v11 中裁定。①**ACP 页删除**：ACP 是 D-15 里 v3 才考虑的通用化方向，MVP 与完整版都绑 opencode，暴露「默认智能体 / cwd / 环境变量 / 协议日志」是把引擎的运维细节推给用户；真要换引擎时改配置文件即可。Agent 一级只剩 **模型 · 技能 · 连接器** 三页。②**技能页**：加工具条（搜索/排序/新建/导入）与表头，每行显示**作者（你 / Sepia）与更新日期**——一眼分清自建与内置；加折叠的「技能是什么」（存放位置 `.sepia/skills/`、按对象自动推荐）。③**连接器页**：加**本机 / Web 类型徽标**与**自建标签**、状态点（已连接/有问题/未启用）、筛选条与常用推荐卡片；加折叠的「连接器能做什么」，其中「权限：只读」是 D-13 在界面上的明示——连接器只提供只读检索，写盘与执行命令在产品里不存在 |
+| D-38 | **术语：笔记库叫 book，单篇叫 page** | vault（Obsidian 系用词）／「笔记库」 | 用户 2026-08-03 拍板「就这么简单」。**vault 是 Obsidian 造的词，不是通用心智**；Sepia 的隐喻本来就是纸——一本 book 由许多 page 组成，比「保险库」自然得多，也和产品源头那句「一支笔、一张纸」同源。映射不变：**book = 文件夹 = git repo = opencode project**（D-14），page = 一个 .md 文件。全库文档与 UI 文案一律替换；`vault` 一词废止 |
+| D-39 | **F18 外链 = 阅读模式，不是内嵌浏览器**：右栏抽出正文按 Sepia 自己的排版呈现（Chrome 阅读模式的形态） | 内嵌浏览器（iframe 或原生 WebContentsView）；直接交系统浏览器 | 用户 2026-08-03 裁定。三条理由：①**技术上绕开死结**——iframe 会被 `X-Frame-Options`／CSP 拦掉相当一部分站点且失败无法优雅检测（VS Code Simple Browser 同款问题），原生视图则要处理浮层让位；阅读模式由主进程抓取、无同源限制，两个问题都不存在。②**气质对**——作者点开外链是要看**这篇文章说了什么**，不是要一个带广告和 cookie 横幅的浏览器挤进纸里。③**能力上多一层**——抽出的正文是 Sepia 可读的文本，**可以直接 `@` 进 markup 上下文**（D-31 要求上下文显式喂），浏览器里的内容对 Sepia 永远是黑盒。抽取失败（SPA／付费墙）时退回系统浏览器打开。MVP 仍只做系统浏览器，本条定的是完整版形态 |
+| D-40 | **图片目录默认 `assets/`，可配置** | 沿用作者个人习惯 `1mg/`；写死不可配 | 用户 2026-08-03 裁定。`1mg/` 是作者自己的约定，不是通用心智，**默认值应当选通行写法**（`assets/` 是 Typora 等编辑器的常见默认）。路径本就是设置项（「图片粘贴路径模板」），此条只定默认值。**实现约束**：模板只管新图往哪写，**读取侧一律按 md 里的实际相对路径解析**——所以换默认值不会让既有的 `1mg/` 旧图失效，老库照常打开 |
+
+## 6. 外部参考（谁家偷什么）
+
+- **AppFlowy**：Add Sources → `@content`；对话中途换模型 → C5；Save to Document → 「落笔」概念。不学：chat 作为页面类型。
+- **AFFiNE / BlockSuite**：doc-whiteboard 二象性 → D3 思维网可视化的候选形态。不学：CRDT 真相源。
+- **BlockNote / ProseMirror comments**：评论锚定机制（锚点随编辑移动）→ 徽章实现的参考。
+- **SiYuan / AFFiNE**：块的序列化纪律 → 组件一律标准围栏。
+
+## 7. 开放问题
+
+**已清零。** 原 5 条去向：#1 锚点 → D-18；#2 commit 粒度 → D-19；#3 system prompt → 留空占位（同 D-17，等 markup 跑起来再写文案）；#4 shader uniform → D-20；#5 trace schema → D-21/D-22。
+
+剩余的都是**留空待填**而非待决策：AGENTS.md 内容（D-17）、markup system prompt 文案、D3 思维网可视化形态（用户自行设计）。
+
+## 8. 下一步
+
+1. ~~产品细节讨论~~（完成：D-01~D-23，开放问题清零，happy path 与 non-goals 成文）→
+2. **可点击灰阶 HTML 线框**：按 happy-path 的 W1~W12 画面清单走查 →
+3. 技术架构（进程模型、目录结构、锚点算法、opencode 接口封装）→
+4. **ultra spec** 交付，回 Claude Code 实施
