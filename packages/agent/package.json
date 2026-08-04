@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "catalog:",
     "@sepia/core": "workspace:*"
   },
   "devDependencies": {

@@ -1,0 +1,8 @@
+{
+  "name": "@lydell/node-pty",
+  "version": "0.0.0-sepia-stub",
+  "description": "Sepia 的 PTY 桩：调用即抛错（架构 §4.1——原生模块归零，PTY 不打包）",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" }
+}

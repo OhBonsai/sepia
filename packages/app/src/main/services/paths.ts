@@ -14,6 +14,10 @@ export interface SepiaPaths {
   config: string
   session: string
   logs: string
+  /** 引擎的隔离根：四个 XDG 根全部指到它下面（架构 §4.1），引擎全部路径由此派生。 */
+  engineHome: string
+  /** API key 密文（safeStorage 加密后的信封 json）。引擎侧零落盘，密文只在这里。 */
+  credentials: string
 }
 
 export function sepiaPaths(userHome: string): SepiaPaths {
@@ -23,5 +27,7 @@ export function sepiaPaths(userHome: string): SepiaPaths {
     config: join(home, 'config.json'),
     session: join(home, 'session.json'),
     logs: join(home, 'logs'),
+    engineHome: join(home, 'engine'),
+    credentials: join(home, 'credentials.json'),
   }
 }

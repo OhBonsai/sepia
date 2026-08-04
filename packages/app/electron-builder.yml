@@ -16,6 +16,14 @@ files:
   - out/**/*
   - package.json
 
+# 引擎产物走 extraResources 而不是 files：它必须落在 asar **之外**——
+# sidecar 在运行期 `import` 那个单文件 ESM，且引擎按 `import.meta.url` 的相对路径
+# 定位四份 wasm，asar 内的虚拟路径两件事都做不到（架构 §4.1）。
+# supervisor 的 engineDir() 与这里一一对应：打包后取 process.resourcesPath/engine。
+extraResources:
+  - from: engine
+    to: engine
+
 # Day-1 不签名、不公证、不自动更新（架构 §1.3 非目标）。
 # identity: null 让 electron-builder 别去钥匙串找证书，否则本地构建会挂。
 mac:

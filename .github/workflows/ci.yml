@@ -19,11 +19,29 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     steps:
+      # submodules: true —— Stage 3 起 check 里有 check:artifacts / check:patches，
+      # 没有 vendor/opencode 这两条就只能报「submodule 不在」，等于空转。
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
+
+      # vendor 的依赖缓存（140 §1.8 风险 3）：key 只认 vendor 的 lockfile。
+      # 「构建期不依赖网络」的准确边界是**产物构建不出网**；依赖安装靠 lockfile 钉死
+      # 加这层缓存兜底，温缓存下 bun install 一步不出网。
+      - name: 缓存 vendor 依赖
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: vendor-bun-${{ hashFiles('vendor/opencode/bun.lock') }}
+          restore-keys: vendor-bun-
+
+      - name: 构建引擎产物（check:artifacts 的被检对象）
+        run: bun run build:engine
+
       # 唯一入口，与本地跑的是同一条命令（002 §3）。
       - run: bun run check
 
@@ -33,11 +51,23 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
-      - name: electron-vite 三段构建
+
+      - name: 缓存 vendor 依赖
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: vendor-bun-${{ hashFiles('vendor/opencode/bun.lock') }}
+          restore-keys: vendor-bun-
+
+      # prebuild 会驱动 build-engine（幂等：产物在且 commit 没变就跳过），
+      # 所以这里不必显式再跑一次——smoke 要的引擎产物由它保证。
+      - name: electron-vite 三段构建（prebuild 顺带出引擎产物）
         run: bun run build
 
       # Stage 1 起改用 Playwright `_electron`（001 §6 的测试表已定）。
@@ -64,5 +94,5 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
-      # check:artifacts（wasm 四份齐全、零 .node）随 Stage 3 的 vendor 构建一起加，
-      # 现在没有 vendor 产物可查，加了也抓不到东西（002 §6.2）。
+      # check:artifacts（wasm 四份齐全、零 .node）已随 Stage 3 落地，跑在上面的
+      # check job 里（引擎产物先建、再全量 check）。

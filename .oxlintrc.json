@@ -28,7 +28,11 @@
     // `export {}` 是 TS 里「这是一个刻意为空的模块」的标准写法，
     // 五个包的 src/index.ts 都靠它占位。unicorn 这条规则针对的是 `import {} from 'x'`，
     // 对 export 侧是误判——关掉的是规则的误报，不是我们自己的纪律。
-    "unicorn/require-module-specifiers": "off"
+    "unicorn/require-module-specifiers": "off",
+    // 这条规则针对的是 window.postMessage 的 targetOrigin。本仓库的 postMessage 全在
+    // main/utilityProcess（Electron 的 MessagePortMain / parentPort——**没有** targetOrigin
+    // 参数），renderer 侧只有 contextBridge。关掉的是规则的误报。
+    "unicorn/require-post-message-target-origin": "off"
   },
   "overrides": [
     {

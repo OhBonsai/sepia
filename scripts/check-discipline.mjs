@@ -62,7 +62,11 @@ function productionSources() {
 
 function load(file) {
   const raw = read(file)
-  return { raw, lines: stripComments(raw).split('\n') }
+  // 违规匹配用**剥注释后的行**（免得说明文字被当违规），豁免匹配用**原始行**——
+  // harness-exempt 本身就住在注释里，剥完再找它永远找不到。Stage 3 实施中发现的
+  // 潜在缺陷：此前所有 isExempt 调用都拿的是剥后行，豁免机制实际从未生效，
+  // 只是恰好没有真豁免对着真违规（140 §1.9 回流已记）。
+  return { raw, lines: stripComments(raw).split('\n'), rawLines: raw.split('\n') }
 }
 
 // ── 结构 3：四个下层包不得 import 进程侧代码 ────────────────────────────────
@@ -73,7 +77,7 @@ function load(file) {
   const TITLE = 'core / editor / agent / ui 不得 import 进程侧代码'
   const roots = ['packages/core/src', 'packages/editor/src', 'packages/agent/src', 'packages/ui/src']
   for (const file of sourcesIn(roots)) {
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
     for (const { specifier, line, index } of importsOf(lines)) {
       const bare = specifier.replace(/^node:/, '').split('/')[0]
       const isRuntime =
@@ -82,7 +86,7 @@ function load(file) {
         specifier.startsWith('node:') ||
         NODE_BUILTINS.has(bare)
       if (!isRuntime) continue
-      if (isExempt(lines, index, ID)) continue
+      if (isExempt(rawLines, index, ID)) continue
       report.add(ID, TITLE, `${file}:${line}`, `import '${specifier}' —— 这些包要能脱离 Electron 单测`)
     }
   }
@@ -98,11 +102,11 @@ function load(file) {
   ])
   for (const file of sourcesIn(['packages/app/src/renderer'])) {
     if (ALLOWED.has(file)) continue
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
 
     lines.forEach((line, index) => {
       if (!/\bwindow\s*\.\s*api\b/.test(line)) return
-      if (isExempt(lines, index, ID)) return
+      if (isExempt(rawLines, index, ID)) return
       report.add(ID, TITLE, `${file}:${index + 1}`, '只经 services/api.ts 与 agent-bridge.ts')
     })
 
@@ -112,7 +116,7 @@ function load(file) {
         /(^|\/)preload(\/|$)/.test(specifier) ||
         /(^|\/)main(\/|$)/.test(specifier)
       if (!bad) continue
-      if (isExempt(lines, index, ID)) continue
+      if (isExempt(rawLines, index, ID)) continue
       report.add(ID, TITLE, `${file}:${line}`, `import '${specifier}' —— renderer 不直连 main 侧`)
     }
   }
@@ -133,11 +137,11 @@ function load(file) {
   const files = roots.flatMap((root) => walk(root, ['.ts', '.tsx', '.css']))
   for (const file of files) {
     if (file === PALETTE) continue
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
     lines.forEach((line, index) => {
       const hit = HEX.exec(line)?.[0] ?? FUNCTIONAL.exec(line)?.[0]
       if (!hit) return
-      if (isExempt(lines, index, ID)) return
+      if (isExempt(rawLines, index, ID)) return
       report.add(ID, TITLE, `${file}:${index + 1}`, `${hit} —— 改用 var(--…)，色值只许住在 ${PALETTE}`)
     })
   }
@@ -152,7 +156,7 @@ function load(file) {
   const WRITE = /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|renameSync)\s*\(/
   for (const file of productionSources()) {
     if (ALLOWED.has(file)) continue
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
 
     // 前置门：**文件得真的 import 了 fs**，否则同名方法只是巧合。
     // 没有这道门，`api.writeFile(...)`（走桥、最终落到 fsio 的原子写）会被误判——
@@ -164,7 +168,7 @@ function load(file) {
     lines.forEach((line, index) => {
       const hit = WRITE.exec(line)?.[0]
       if (!hit) return
-      if (isExempt(lines, index, ID)) return
+      if (isExempt(rawLines, index, ID)) return
       report.add(ID, TITLE, `${file}:${index + 1}`, `${hit} —— 改用 services/fsio.ts 的 atomicWrite`)
     })
   }
@@ -179,11 +183,11 @@ function load(file) {
   const XDG =
     /(?:XDG_[A-Z_]+|\.config\/sepia|Library\/Application Support|AppData\/(?:Roaming|Local)|\.local\/share)/
   for (const file of productionSources()) {
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
     lines.forEach((line, index) => {
       const hit = XDG.exec(line)?.[0]
       if (!hit) return
-      if (isExempt(lines, index, ID)) return
+      if (isExempt(rawLines, index, ID)) return
       report.add(ID, TITLE, `${file}:${index + 1}`, `${hit} —— 应用自有文件一律走 services/paths.ts`)
     })
   }
@@ -196,10 +200,10 @@ function load(file) {
   const DUMP = /(?:JSON\s*\.\s*stringify|console\s*\.\s*\w+|\blog\w*|\bdebug|\binspect)\s*\(\s*process\s*\.\s*env\s*[,)]/
   const files = [...sourcesIn(['packages']), ...walk('scripts', ['.mjs', '.ts'])]
   for (const file of files) {
-    const { lines } = load(file)
+    const { lines, rawLines } = load(file)
     lines.forEach((line, index) => {
       if (!DUMP.test(line)) return
-      if (isExempt(lines, index, ID)) return
+      if (isExempt(rawLines, index, ID)) return
       report.add(ID, TITLE, `${file}:${index + 1}`, '只取用到的单个 key，且不要打印它的值')
     })
   }

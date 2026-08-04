@@ -14,7 +14,9 @@
   },
   "scripts": {
     "ensure-electron": "node -e \"require('electron')\"",
+    "predev": "bun ../../scripts/build-engine.ts",
     "dev": "bun run ensure-electron && electron-vite dev",
+    "prebuild": "bun ../../scripts/build-engine.ts",
     "build": "electron-vite build",
     "start": "bun run ensure-electron && electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.web.json",
@@ -25,6 +27,7 @@
     "@sepia/core": "workspace:*",
     "@sepia/editor": "workspace:*",
     "@sepia/ui": "workspace:*",
+    "jsonc-parser": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { type SessionState, t } from '@sepia/core'
+import { type EngineStatus, type SessionState, t } from '@sepia/core'
 import { type SearchApi, type TextFidelity, readFidelity, writeFidelity } from '@sepia/editor'
 import { Loading, SearchPanel } from '@sepia/ui'
 
 import { EditorHost } from '../editor/host.tsx'
 import { registerCommand } from '../commands/registry.ts'
+import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
 // Stage 1 的 shell：读上次的 page、挂 CM6、⌘S 保存。
-// 路由、布局、多 Tab、主页与 onboarding 都归后面的 stage。
+// Stage 3 只加两样（W12，克制）：Agent 缺席的顶部细提示线 + ⌘K 的状态文案。
+// 真浮层、路由、布局、多 Tab、主页与 onboarding 都归后面的 stage。
 
 interface Page {
   path: string
@@ -24,11 +26,17 @@ type Status = 'loading' | 'empty' | 'ready'
 /** session 写盘的静默窗口。光标与滚动都很密（滚动一次几十个事件），逐个原子写是自伤。 */
 const SESSION_DEBOUNCE_MS = 500
 
+/** ⌘K 状态文案停留时长。它是提示不是面板——自己消失，不用关。 */
+const K_HINT_MS = 2_500
+
 export function App(): React.JSX.Element {
   const [status, setStatus] = useState<Status>('loading')
   const [page, setPage] = useState<Page | null>(null)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [engine, setEngine] = useState<EngineStatus>('starting')
+  const [kHint, setKHint] = useState<string | null>(null)
+  const kHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const draft = useRef<string>('')
 
   // 查找替换：CM6 的驱动接口由 EditorHost 上抛，面板是 ui 的 dumb 组件，这里装配
@@ -127,6 +135,38 @@ export function App(): React.JSX.Element {
     if (searchApi.current) searchApi.current.set({ query: '' })
   }, [])
 
+  // 引擎状态：初值 + 订阅。它只驱动提示线与 ⌘K 文案，纸的任何路径都不等它（不变量 1）。
+  useEffect(() => {
+    let alive = true
+    void agent.status().then((next) => {
+      if (alive) setEngine(next)
+    })
+    const off = agent.onStatusChange((next) => {
+      if (alive) setEngine(next)
+    })
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  // ⌘K：本 stage 只显示状态（140 §1.2 刹车表——浮层的形态归 Stage 4）。
+  const summon = useCallback((): void => {
+    if (kHintTimer.current !== null) clearTimeout(kHintTimer.current)
+    setKHint(engine === 'ready' ? null : t(engine === 'absent' ? 'agent.k.absent' : 'agent.k.starting'))
+    kHintTimer.current = setTimeout(() => {
+      kHintTimer.current = null
+      setKHint(null)
+    }, K_HINT_MS)
+  }, [engine])
+
+  useEffect(
+    () => () => {
+      if (kHintTimer.current !== null) clearTimeout(kHintTimer.current)
+    },
+    [],
+  )
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     registerCommand({ id: 'file.save', title: 'cmd.file.save', key: 'Mod-s', run: save })
@@ -138,7 +178,8 @@ export function App(): React.JSX.Element {
       key: 'Mod-Alt-f',
       run: () => openSearch('replace'),
     })
-  }, [save, pick, openSearch])
+    registerCommand({ id: 'agent.summon', title: 'cmd.agent.summon', key: 'Mod-k', run: summon })
+  }, [save, pick, openSearch, summon])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -156,11 +197,14 @@ export function App(): React.JSX.Element {
         // macOS 上 ⌥F 产出 ƒ，两个都接
         event.preventDefault()
         openSearch('replace')
+      } else if (event.key === 'k') {
+        event.preventDefault()
+        summon()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [save, pick, openSearch])
+  }, [save, pick, openSearch, summon])
 
   useEffect(() => {
     document.title = page ? `${dirty ? '• ' : ''}${page.path.split('/').pop()}` : t('app.name')
@@ -170,6 +214,12 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="sepia-shell" data-sepia-shell={status}>
+      {engine === 'absent' && (
+        <div className="sepia-agent-line" data-sepia-agent="absent">
+          {t('agent.absent.line')}
+        </div>
+      )}
+      {kHint !== null && <div className="sepia-agent-hint">{kHint}</div>}
       {error !== null && <div className="sepia-error">{error}</div>}
       {searchOpen !== false && page !== null && (
         <SearchPanel
