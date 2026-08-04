@@ -9,11 +9,16 @@ import type { ElectronApplication } from '@playwright/test'
 // 这三条机器判定不了的部分留给人工清单，能判定的部分在这里。
 
 const APP_ENTRY = 'packages/app/out/main/index.js'
+
+// CI（Linux runner）上 electron 的 SUID sandbox 助手没有 setuid root，不带这个标志
+// 根本起不来——Stage 0 的自启动 smoke 一直带着它，换 Playwright 时漏了。
+// 本地不加：sandbox 该开着测。
+const LAUNCH_ARGS = process.env['CI'] ? [APP_ENTRY, '--no-sandbox'] : [APP_ENTRY]
 const PAGE_BODY = '# 冷启动\r\n\r\n第二行。\r\n'
 
 async function launch(home: string): Promise<ElectronApplication> {
   return electron.launch({
-    args: [APP_ENTRY],
+    args: LAUNCH_ARGS,
     // HOME 指到临时目录，于是 `app.getPath('home')` 跟着走，
     // ~/.sepia 落在临时目录里——**不碰用户真实的 ~/.sepia**。
     env: { ...process.env, HOME: home, USERPROFILE: home },
@@ -45,7 +50,7 @@ test('冷启动 → 可写，全部打点在预算内', async () => {
   // 而 stdout 这条通道本来就是为 smoke 设计的（perf.ts printReport），
   // 不必为了测试在桥上或全局上多挂一个东西。
   const app = await electron.launch({
-    args: [APP_ENTRY],
+    args: LAUNCH_ARGS,
     env: { ...process.env, HOME: home, USERPROFILE: home, SEPIA_SMOKE_EXIT: '1' },
   })
 

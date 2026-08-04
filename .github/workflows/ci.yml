@@ -54,5 +54,15 @@ jobs:
       - name: smoke —— 冷启动打点与首帧主题
         run: xvfb-run -a bun run test:smoke
 
+      # Actions 日志匿名读不到，但 artifact 公开可下——smoke 失败时把 Playwright 的
+      # error-context 传上来，失败详情就有了一条公开可读的通道（与 build.yml 的
+      # 「产物清单是另一条能看见真相的通道」同一招）。
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-failure-context
+          path: test-results/
+          if-no-files-found: ignore
+
       # check:artifacts（wasm 四份齐全、零 .node）随 Stage 3 的 vendor 构建一起加，
       # 现在没有 vendor 产物可查，加了也抓不到东西（002 §6.2）。

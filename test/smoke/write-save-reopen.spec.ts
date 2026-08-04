@@ -14,6 +14,11 @@ import { _electron as electron, expect, test } from '@playwright/test'
 
 const APP_ENTRY = 'packages/app/out/main/index.js'
 
+// CI（Linux runner）上 electron 的 SUID sandbox 助手没有 setuid root，不带这个标志
+// 根本起不来——Stage 0 的自启动 smoke 一直带着它，换 Playwright 时漏了。
+// 本地不加：sandbox 该开着测。
+const LAUNCH_ARGS = process.env['CI'] ? [APP_ENTRY, '--no-sandbox'] : [APP_ENTRY]
+
 /** 200 行 CRLF 文本，长到必然出现滚动条。 */
 const LINES = Array.from({ length: 200 }, (_, i) => `第 ${i + 1} 行 —— 用来撑出滚动条的正文内容。`)
 const BODY = `${LINES.join('\r\n')}\r\n`
@@ -31,7 +36,7 @@ test('写字→保存→重开：滚动还原、内容落盘、CRLF 逐字节保
 
   // ── 第一程：恢复滚动 → 敲字 → 保存 ────────────────────────────────────────
   const first = await electron.launch({
-    args: [APP_ENTRY],
+    args: LAUNCH_ARGS,
     env: { ...process.env, HOME: home, USERPROFILE: home },
   })
   const window = await first.firstWindow()
@@ -63,7 +68,7 @@ test('写字→保存→重开：滚动还原、内容落盘、CRLF 逐字节保
 
   // ── 第二程：重开，内容与滚动都在 ─────────────────────────────────────────
   const second = await electron.launch({
-    args: [APP_ENTRY],
+    args: LAUNCH_ARGS,
     env: { ...process.env, HOME: home, USERPROFILE: home },
   })
   const reopened = await second.firstWindow()
