@@ -2,6 +2,12 @@
   "name": "@sepia/app",
   "version": "0.0.0",
   "private": true,
+  "description": "一张会越用越懂你的纸：单人、本地、git 打底的 markdown 笔记本",
+  "homepage": "https://github.com/OhBonsai/sepia",
+  "author": {
+    "name": "OhBonsai",
+    "email": "letbonsaibe@gmail.com"
+  },
   "main": "out/main/index.js",
   "exports": {
     ".": "./src/index.ts"

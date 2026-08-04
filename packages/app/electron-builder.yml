@@ -2,9 +2,15 @@ appId: com.sepia.notebook
 productName: Sepia
 copyright: Sepia
 
+# 不设的话会从包名 @sepia/app 派生出 "@sepiaapp"，AppImage 拒收这种文件名。
+executableName: sepia
+
 directories:
   output: dist
   buildResources: build
+
+# 不带上包名 @sepia/app，否则产物会叫 "@sepia/app_0.0.0_amd64.deb"。
+artifactName: ${productName}-${version}-${arch}.${ext}
 
 files:
   - out/**/*
@@ -33,6 +39,8 @@ nsis:
 
 linux:
   category: Office
+  # deb 必须有 maintainer，否则打包直接失败——这是 mac 绿、linux 红的原因。
+  maintainer: OhBonsai <letbonsaibe@gmail.com>
   target:
     - AppImage
     - deb
