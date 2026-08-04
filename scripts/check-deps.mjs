@@ -72,8 +72,13 @@ report.note(
 )
 
 // ── B. 实际侧 ────────────────────────────────────────────────────────────────
+// `validate: true` 不是可选项：不传它，dependency-cruiser 会照常遍历模块图、
+// 照常报 totalCruised，但**一条规则都不求值**，violations 恒为 0（types/options.d.mts:53
+// 原话："if true, will attempt to validate with the rules in ruleSet"）。
+// 这条检查就是这样空转了整个 Stage 0，见 specs/plan/110_stage0_骨架.md §1.5「空转的检查」。
 const result = await cruise(['packages'], {
   ...config.options,
+  validate: true,
   ruleSet: { forbidden: config.forbidden },
   outputType: 'json',
 })
