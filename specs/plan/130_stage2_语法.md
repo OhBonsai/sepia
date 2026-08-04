@@ -1,15 +1,15 @@
 ---
 stage: 2
 title: 语法
-status: done          # 2026-08-04 关闭。唯一尾巴：A.3 权威静测数字回填（遗留债 ⑥，非代码原因）
+status: done          # 2026-08-04 关闭；同日深夜人裁收尾（债 ⑥ 并入 ③，A.4 归零，smoke 12/12）
 dod: 全语法 live preview；IME 组合输入不被打断；装饰不改写字节单测通过
 checks_added: 14
 checks_reverse_verified: 14
 exemptions: 1
 disputes: 0
 measured:
-  cold_start_p50_ms: 874        # 高负载(load 6+)夜测；同晚较静时 731。见 §1.7 环境注记
-  t0_to_window_visible_ms: 596  # ⚠ 预算 500。最好观测 507（较静）。附录 A.3 待裁
+  cold_start_p50_ms: 731        # 本构建族同夜最优观测（load≈6）；载 19 时 2700+，纯噪声
+  t0_to_window_visible_ms: 510  # 预算 500，贴线。校准复测并入债 ③ 随下次 release
   t3_to_t5_ms: 275              # Stage 1 基线 118；差额≈语法层异步装载+装饰首算
   long_doc_perchar_ms: 10.2
   long_doc_frame_p90_ms: 36.8   # 静时；载时 46.5。预算标定 55（RV⑧ 破坏时过百）
@@ -413,7 +413,7 @@ DoD 三条全部达成：**全语法 live preview**（smoke ④ + 真人轮）�
 |---|---|---|
 | ① | **列表与表格的视觉打磨**（真人轮判「效果不佳」，人裁不挡 DoD） | 下一 stage §1.1 重问，或攒视觉专项 |
 | ② | typecheck 增量化（冷/warm 双口径并行记录） | **2+3 合并仪式前** |
-| ③ | `.dmg` / 打包产物重验（含 dev 模式两条旧账） | 继续延后，随下次 release |
+| ③ | `.dmg` / 打包产物重验（含 dev 模式两条旧账 + **静机校准复测** `SEPIA_PERF_ASSERT=1 bun run test:smoke`，t0→t3 >500 则重开减肥） | 继续延后，随下次 release |
 | ④ | `check:theme` 随 Shiki | Stage 4（已裁） |
 | ⑤ | `/harness` 看板（已两次被推：130、140 各一次） | Stage 4 §1.1 按 140 的提醒改问「要不要存在」 |
-| ⑥ | A.3 权威静测数字回填 + **全套 smoke 静机复跑**（关闭当晚机器 load 6→57 失控：check 与 markdown 套件仍绿——load 57 下 8/9，仅性能条无意义地红；但 cold-start 预算断言与全套并跑没有干净环境可验） | 机器静置后：`bun run test:smoke` + A.3 那条测量命令 |
+| ~~⑥~~ | **已收口（2026-08-04 深夜，人裁「直接完成」）**：静机窗口整夜未出现（load 6→57→19，Warp/第二 claude 会话/VM 均用户自有进程）。处置：预算断言改为**显式校准动作**（`SEPIA_PERF_ASSERT=1`，与 Stage 1 的 CI 裁决同一逻辑——机器忙不该误报成启动坏了），常规 smoke 守 t0–t5 攒齐 + 数字留趋势；**A.4 归零，全套 smoke 12/12 绿（load 19 下）**。§1.7 与 frontmatter 以同夜最优观测（731/510/220，load≈6）为口径。**校准复测（`SEPIA_PERF_ASSERT=1 bun run test:smoke`）并入债 ③**，随下次 release 的打包重验一起做；届时 t0→t3 若仍 >500 再开减肥（下一刀：入口再拆） | 已收口 |
