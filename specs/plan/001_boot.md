@@ -201,9 +201,14 @@ electron-builder
 | workflow | 触发 | 内容 |
 |---|---|---|
 | `ci` | push / PR | lint（oxlint）→ typecheck → Vitest → **preload 白名单守卫** → 产物自检 |
-| `build` | push main / tag | matrix：`macos`（双 arch）+ `ubuntu`（linux + win）；产出未签名安装包 |
+| `build` | push 默认分支 / tag | matrix：`macos`（双 arch）+ `ubuntu`（AppImage + deb）+ `windows`（nsis）；产出未签名安装包 |
 
-main push 覆盖发 `alpha-latest` prerelease，tag 发正式 release。二者共用同一构建脚本。concurrency 取消同分支旧任务，`fail-fast: false`，缓存 bun 与 node_modules。
+默认分支 push 覆盖发 `alpha-latest` prerelease，tag 发正式 release。二者共用同一构建脚本。concurrency 取消同分支旧任务，`fail-fast: false`，缓存 bun 与 node_modules。
+
+> **Stage 0 修订两处**，都是实测撞出来的：
+>
+> 1. **Windows 包改用原生 `windows-latest`，不再从 ubuntu + wine 交叉。** 原定「ubuntu 出 linux + win」实跑下来 AppImage 与 deb 都能出，只有 nsis 在 wine 下失败；而 Actions 日志匿名读不到，继续盲调 wine 只会反复烧 CI 轮次。多一台 runner 对公开仓库免费，换掉一整类不可观测的失败，划算。
+> 2. **触发分支是 `master`（本仓库的默认分支），不是 `main`。** 首次 push 后 `build` 压根没被触发就是因为这个。
 
 ---
 
