@@ -2,7 +2,8 @@ name: build
 
 on:
   push:
-    branches: [main]
+    # 本仓库的默认分支是 master，不是 main。001 §5 写的「push main」指的是默认分支。
+    branches: [master]
     tags: ['v*']
   workflow_dispatch:
 
