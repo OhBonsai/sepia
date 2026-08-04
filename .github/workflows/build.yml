@@ -80,15 +80,20 @@ jobs:
         working-directory: packages/app
         run: bunx electron-builder --win nsis --publish never
 
-      - name: 三个目标必须全绿
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          echo "AppImage = ${{ steps.linux_appimage.outcome }}"
-          echo "deb      = ${{ steps.linux_deb.outcome }}"
-          echo "nsis     = ${{ steps.win_nsis.outcome }}"
-          test "${{ steps.linux_appimage.outcome }}" = success
-          test "${{ steps.linux_deb.outcome }}" = success
-          test "${{ steps.win_nsis.outcome }}" = success
+      # 上面三步带 continue-on-error，于是它们在 API 里的 conclusion 恒为 success——
+      # 真实结果只活在表达式的 outcome 里。下面三步不带 continue-on-error，
+      # 各自只做一次断言，所以**它们的结论是诚实的、且公开可读**，能直接指出是哪个目标坏了。
+      - name: 判定 · linux AppImage
+        if: always() && matrix.os == 'ubuntu-latest'
+        run: test "${{ steps.linux_appimage.outcome }}" = success
+
+      - name: 判定 · linux deb
+        if: always() && matrix.os == 'ubuntu-latest'
+        run: test "${{ steps.linux_deb.outcome }}" = success
+
+      - name: 判定 · win nsis
+        if: always() && matrix.os == 'ubuntu-latest'
+        run: test "${{ steps.win_nsis.outcome }}" = success
 
       # always()：即使某个目标挂了，也把已经出来的产物传上去——
       # 产物清单（名字与大小）是公开可读的，这是另一条能看见真相的通道。
