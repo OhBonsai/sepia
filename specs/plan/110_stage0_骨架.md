@@ -1,7 +1,7 @@
 ---
 stage: 0
 title: 骨架
-status: in-progress
+status: done
 dod: 三平台包可下载、能开空窗口；turbo 能按包并行跑 typecheck 与测试
 checks_added: 13
 checks_reverse_verified: 11
@@ -430,15 +430,38 @@ PASS
 
 机器判定不了的。每条是**具体动作 + 具体预期**。
 
-- [ ] `bun run dev`，窗口出现后**目视确认没有白色闪一下**——在深色系统主题下最明显；把系统切成浅色再跑一次，同样不许闪
-- [ ] 窗口出现时**空白但不是"坏掉"的空白**：右键 → 检查元素能看到 `<div data-sepia-shell="empty">`，Console 无红色报错
-- [ ] DevTools Console 里敲 `window.api`，看到且只看到 `app.platform` 与 `app.versions` 三项；敲 `window.require`、`window.process` 均为 `undefined`（contextIsolation + sandbox 生效）
-- [ ] 应用运行中，另开终端再启一个实例并带一个 `.md` 路径：**第二个终端立刻返回提示符**（进程退了），**第一个实例弹出第二个窗口**
-- [ ] 关掉所有窗口：macOS 上应用**仍在 Dock 里**（不退出），点 Dock 图标能开回一个新窗口；Linux / Windows 上应用**应当退出**
-- [ ] 从 CI 的 release 页面下载 `.dmg`，双击挂载、拖进 Applications、启动 → 能开出空窗口（**未签名，首次会被 Gatekeeper 拦，右键打开绕过**——这是预期行为，不是缺陷）
-- [ ] 下载 `.AppImage`，`chmod +x` 后运行 → 能开出空窗口
-- [ ] 下载 `.exe` 安装 → 能开出空窗口（**若手边没有 Windows 机器，明确记为"未验"，不许默认它成立**）
-- [ ] 打开 `CLAUDE.md`，通读一遍，确认：不超过 150 行、每条纪律都注明了由谁强制、有正误对照、有卡住协议、有三种记号
+> **执行记录（2026-08-04）**。范围经人裁决收窄：**Stage 0 以「本地能起来」为准，安装包的人工确认整体延后**（见本节末「延后的账」）。
+> 已验 5 条 ｜ 人裁决跳过 1 条 ｜ 延后 3 条。**Stage 0 于 2026-08-04 关闭。**
+
+- [x] **通过**。`bun run dev`，窗口出现后**目视确认没有白色闪一下**——在深色系统主题下最明显；把系统切成浅色再跑一次，同样不许闪
+- [x] **通过**。窗口出现时**空白但不是"坏掉"的空白**：菜单栏 **View → Toggle Developer Tools**（或窗口聚焦时按 ⌥⌘I）打开 DevTools，Elements 里能看到 `<div data-sepia-shell="empty">`，Console 无红色报错
+      > **别用右键**。Electron **默认没有右键菜单**——"检查元素"是 Chrome 的行为，Electron 要自己挂 `context-menu` 事件才有。实测本 app 的 `webContents` 上 `context-menu` 监听器数为 **0**。本条原先写的是"右键 → 检查元素"，是**照抄浏览器习惯的错误**，已订正。
+      > 菜单栏顶级项是 `Electron | File | Edit | View | Window`（默认菜单，应用名还没设成 Sepia），DevTools 项的快捷键是 `Alt+Command+I`。
+- [x] **通过**。DevTools Console 里敲 `window.api`，看到且只看到 `app.platform` 与 `app.versions` 三项；敲 `window.require`、`window.process` 均为 `undefined`（contextIsolation + sandbox 生效）
+- [x] **通过**。应用运行中，另开终端再启一个实例并带一个 `.md` 路径：**第二个终端立刻返回提示符**（进程退了），**第一个实例弹出第二个窗口**
+      > 实际用的是**构建产物**而非安装包，与 CI 走同一条路径，不需要打包安装：
+      > `bun run build` → 两个终端各跑 `bunx electron packages/app/out/main/index.js /tmp/{a,b}.md`。
+      > `bun run dev` 跑两次**验不了**这条——那起的是两个 vite dev server，单实例锁根本不参与。
+- [x] **通过**。关掉所有窗口：macOS 上应用**仍在 Dock 里**（不退出），点 Dock 图标能开回一个新窗口；Linux / Windows 上应用**应当退出**
+- [ ] **延后**（见本节末）。从 CI 的 release 页面下载 `.dmg`，双击挂载、拖进 Applications、启动 → 能开出空窗口（**未签名，首次会被 Gatekeeper 拦，右键打开绕过**——这是预期行为，不是缺陷）
+- [ ] **延后**（且无 Linux 机器）。下载 `.AppImage`，`chmod +x` 后运行 → 能开出空窗口
+- [ ] **延后**（且无 Windows 机器）。下载 `.exe` 安装 → 能开出空窗口（**若手边没有 Windows 机器，明确记为"未验"，不许默认它成立**）
+- [~] **人裁决：跳过，不验**。打开 `CLAUDE.md`，通读一遍，确认：不超过 150 行、每条纪律都注明了由谁强制、有正误对照、有卡住协议、有三种记号
+      > 行数已验：**117 行 < 150** ✅。其余四项（强制方注明 / 正误对照 / 卡住协议 / 三种记号）**经人明确裁决不验**，不是遗漏。
+      > **代价记在这里**：`CLAUDE.md` 是下一个 stage 的 Claude 唯一的前置约束来源。它若有缺漏，症状不会是报错，而是**下个 stage 反复撞纪律**。若 Stage 1 出现「AI 频繁违反纪律 / 频繁触发卡住协议」，第一个该怀疑的就是这里。
+
+### 延后的账
+
+**这不是"已经好了"，是"暂时不做，记下什么时候还"。** 002 §5.1 点名过这个失败模式：把"这一步做不了"说成"这件事已经好了"。
+
+| 项 | 状态 | 为什么延后 | 什么时候补 |
+|---|---|---|---|
+| `.dmg` 能装能起 | 延后 | 人裁决：Stage 0 以本地能跑为准 | **Stage 1 收尾**，那时有真界面，装完看得到东西 |
+| `.AppImage` | 延后 + 无 Linux 机器 | 同上 | Stage 1 收尾，或等有 Linux 环境 |
+| `.exe` | 延后 + 无 Windows 机器 | 同上 | 挂在架构 §8「win/linux 无日常自用覆盖」风险名下 |
+| `open-file`（双击 `.md`） | **当前不可验** | `electron-builder.yml` 缺 `fileAssociations`，系统没把 `.md` 关联到 Sepia，事件永远送不到 | 见 §1.9，随 `fileAssociations` 一起 |
+
+**要分清两件事**：CI 产出三平台安装包，这是**机器验过的**；延后的只是**人工确认它能装能跑**。DoD 没有被改弱，是验收证据欠了一部分。
 
 ---
 
@@ -479,6 +502,7 @@ PASS
 | 5 | **Windows 上的运行时行为完全没覆盖** | 手边没有 Windows 机器 | **不探**。Stage 0 只保证"能打出包"，运行时验证明确记为未验。风险登记在架构 §8「win/linux 无日常自用覆盖」名下，随 Stage 1 有真界面时再补 |
 | 6 | **`check` 的 30s 预算随 stage 增长** | Stage 0 包小、测少，轻松达标；真正的压力在 Stage 2（round-trip 要拿真实文章批量对拍）与 Stage 5（锚点标定） | **不探，但现在就埋基线**。§1.7 记下 Stage 0 的数字，让后面每个 stage 都能看见自己涨了多少 |
 | 7 | **turbo 缓存掩盖真实耗时** | `turbo` 全缓存命中时 typecheck / test 会显示 0.1s，看起来很快但不是冷启动真相 | **边做边探**。§1.7 的数字一律**清缓存后测**，并在记录里注明 |
+| 8 | **`bun run dev` 在全新装依赖后起不来**（已发生、已修） | electron 43 **取消了 `postinstall`**（`package.json` 里根本没有 `scripts` 字段），改成在 `require('electron')` 时**惰性下载**二进制；而 electron-vite 5 的 `getElectronPath()` 直接读 `node_modules/electron/path.txt`，读不到就抛 `Error: Electron uninstall`，**它不会触发那个惰性下载**。于是全新 `bun install` 之后 `bun run dev` 必挂 | **已修**：`packages/app` 加 `ensure-electron` 脚本（`node -e "require('electron')"`），`dev` 与 `start` 都先跑它。`build` 不需要二进制，故不挂。**这不是 bun 特有的**——npm/pnpm 同样没有 postinstall 可跑 |
 
 ---
 
@@ -604,6 +628,37 @@ PASS
 **曾经最严重的 A.4 #4 已修复。** 它不是"少做了一件事"，而是"做了一件事，它一直在报告自己有效，而它无效"——波及三条刻意不连线的守卫与结构 4（main ↮ renderer）。修完复验证明：打开规则后现有代码**零违规**，空转期间没有真的越界代码溜进来，只是没人守，不是守漏了。
 
 **新暴露的覆盖缺口**：`checks_added` 改用 §1.4 表为分母后，第 1 项（包依赖声明的包边界本身）从未被反向验证过——反向验证 ① 本想验它，却被 lint 的结构 3 抢先拦住，编译期"import 不到"这层物理约束始终没走过。
+
+### A.6 「未验」项兑现了一次代价（2026-08-04，对账之后）
+
+A.5 把「§1.6 人工清单整体未执行」记为**未验**。当天晚些时候人工跑 `bun run dev`，**第一条人工项就炸了**：`Error: Electron uninstall`，窗口根本起不来。根因见 §1.8 风险 8（electron 43 取消 postinstall 改惰性下载，electron-vite 5 仍按旧假设直接读 `path.txt`）。
+
+**这条最该被记下的不是 bug 本身，是它为什么躲过了全部机器检查：**
+
+| 通道 | 为什么没抓到 |
+|---|---|
+| `bun run check` | 七步里没有一步会启动 Electron，`check` 本来就不该管这个 |
+| `bun run build` | `electron-vite build` 只打包不启动，读的是 electron 的 `package.json` 版本号而非二进制 |
+| CI 的「开一个空窗口再退出」smoke | 它跑的是 `bunx electron out/main/index.js`——**`bunx` 走的是 electron 自己的 `cli.js`/`index.js`，那条路径会触发惰性下载并自愈**。所以 CI 恒绿，且永远绿 |
+| 本地此前的验证 | 同理：我先跑过 `bunx electron`，二进制已被顺带下好，之后 `bun run dev` 才成功。**真正的全新环境从未被验过** |
+
+**教训**：CI 的 smoke 与人日常用的入口**不是同一条路径**，于是 CI 绿不代表 `bun run dev` 能起来。这类"两条路径分叉"的缺陷，机器检查天然抓不到——它正是 003 §1.6 人工验证清单存在的理由。**把人工项记为"未验"不是免责，是记账，账迟早要还。**
+
+**建议（未自行处置）**：把 CI 的 smoke 从 `bunx electron out/main/index.js` 改成走与人相同的入口（`bun run start`，即 `electron-vite preview`），让 CI 与日常用的是同一条路径。
+
+### 回流 · `electron-builder.yml` 缺 `fileAssociations`
+
+> 2026-08-04 人工验证时发现。**这条不是"没测"，是"当前配置下测不了"。**
+
+`main/index.ts` 里 `app.on('open-file', ...)` 的 handler 是对的，但 `electron-builder.yml` **没有 `fileAssociations` 段**——系统压根不知道 Sepia 能开 `.md`，于是 macOS 永远不会给它发 `open-file` 事件。双击 `.md` 走不到 Sepia，只有 `open -a Sepia x.md` 这种显式指定能触发。
+
+**代码写了一半：处理事件的那半有，注册成 `.md` 处理器的那半没有。** 附录 A.1 把这条记为"代码在，行为未验"，真实原因是这个。
+
+**建议（未自行处置）**：两条路二选一——
+- 补 `fileAssociations`（`ext: [md, markdown]`、`role: Editor`）进 `electron-builder.yml`，Stage 0 就补齐；
+- 或明确判给 **Stage 6（文件管理）**，同时在 §1.3 功能深度表里把 `open-file` 从 Stage 0 的范围里划掉——**现在它处在"代码在范围里、注册不在范围里"的中间态，这种状态最容易被误读成已完成**。
+
+---
 
 **其余差异的处置权仍保留给人。** 本次只动了一处实现（`check-deps.mjs` 加 `validate: true`）与两处措辞。
 

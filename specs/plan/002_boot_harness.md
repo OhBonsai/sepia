@@ -15,7 +15,7 @@
 | 层 | 手段 | 何时违反被发现 | 能否绕过 |
 |---|---|---|---|
 | 1 | **类型** | 写的时候（IDE 红线） | 要显式 `as any`，很显眼 |
-| 2 | **包边界** | 编译时（import 不到） | 要改 `package.json`，很显眼 |
+| 2 | **包边界** | 编译时（import 不到）**——但有盲区**：带绑定的 `import { x } from 'pkg'` 报 `TS2307`，而副作用式的 `import 'pkg'` **不报错**，由第 4 层的 `check:deps`（`not-to-unresolvable`）兜底。`import './x.css'` 这类写法在前端很常见，别只依赖这一层 | 要改 `package.json`，很显眼 |
 | 3 | **lint** | 保存 / 提交时 | `eslint-disable` 一行 |
 | 4 | **专项脚本** | `check` / CI | 改脚本 |
 | 5 | **单测** | `check` / CI | 删测试 |
@@ -36,10 +36,14 @@
 | registry 存 key 不存字符串 | `title: CopyKey`（`keyof typeof copy` 的联合），传字面串编译不过 |
 | AgentBridge 每请求带 `directory` | 该参数**必填**且类型为 `BookDirectory` 品牌类型，忘了编译不过 |
 | system prompt 必须是常量 | 类型为 `const` 断言的字面量联合，模板字符串拼变量赋不进去 |
-| 组件不得出现字面色值 | 样式 token 类型为 `ThemeVar`（`\`var(--${string})\``），写 `#fff` 编译不过 |
+| ~~组件不得出现字面色值~~ **改判：维持 lint** | **类型层够不到它。** React 的 `style={{ color: '#fff' }}` 走 `CSSProperties`，类型上就接受任意字符串，`ThemeVar` 拦不住。`ThemeVar`（`\`var(--${string})\``）保留，但定位为 **token 词汇表**而非强制手段；纪律 3 的强制手段仍是 lint，并扩到扫 `.css`（只放过调色板文件）。**仍是「一条纪律一种手段」** |
 | 落笔前做 CAS 校验 | 落笔函数**只接受** `{ range, expectedText }`，不提供无校验的重载 |
 
 **最后一条是模式而非技巧**：把危险操作设计成"没有不安全的调用方式"。不安全的路径不存在，就不用检查它有没有被走。
+
+> **一条元教训（2026-08-04，Stage 1 实测）**：上表原有五条，是在**没有检验「类型能不能真的够到那个危险」**的情况下写下的。字面色值那条一落地就发现够不到——`CSSProperties` 是个洞。**升级为类型不是越多越好：用覆盖面更小的手段换掉更大的，是净退步。**
+>
+> 剩下三条（`BookDirectory`、system prompt 常量、落笔 CAS）在 Stage 3 / 4 落地**之前**，必须先各问一遍同一个问题：**这个类型是危险操作的唯一通道吗？有没有一条绕过它的合法写法？** 答不上来就别升，留在原来的层。
 
 ### 2.2 由包边界强制
 
@@ -59,14 +63,16 @@
 
 ### 2.4 由专项脚本强制
 
-| 脚本 | 断言 |
-|---|---|
-| `check:bridge` | preload 暴露面与快照一致；新增须显式更新快照并在 diff 中可见 |
-| `check:deps` | 实际依赖图 == 001 §2.2 的图 |
-| `check:artifacts` | 构建产物中 `.wasm` 四份齐全、`.node` 数量为零 |
-| `check:workspace` | `vendor/` 不被任何 workspace glob 匹配 |
-| `check:patches` | 统计 `patches/opencode/` 数量并打印——**不阻塞，只让增长可见**（T-18 的健康指标） |
-| `check:theme` | Shiki 与 CM6 的 token 色值表由同一份色板派生（比对生成结果） |
+| 脚本 | 断言 | 归属 | 进 `check`？ |
+|---|---|---|---|
+| `check:bridge` | preload 暴露面与快照一致；新增须显式更新快照并在 diff 中可见 | Stage 0 | 是，gate |
+| `check:deps` | 实际依赖图 == 001 §2.2 的图 | Stage 0 | 是，gate |
+| `check:workspace` | `vendor/` 不被任何 workspace glob 匹配 | Stage 0 | 是，gate |
+| `check:theme` | Shiki 与 CM6 的 token 色值表由同一份色板派生（比对生成结果） | **Stage 2**（有色板时） | 是，gate |
+| `check:artifacts` | 构建产物中 `.wasm` 四份齐全、`.node` 数量为零 | **Stage 3**（有产物时） | 否，只进 CI（要构建） |
+| `check:patches` | 统计 `patches/opencode/` 数量并打印——**不阻塞，只让增长可见**（T-18 的健康指标） | **Stage 3**（有 `patches/opencode/` 时） | **不是 gate**——是 `check` 输出里的一行数字，不影响 PASS/FAIL |
+
+**「不是 gate」这一档要单列出来**：`check:patches` 若按 gate 实现，它要么恒绿（等于 §6.2 说的净负担），要么给 patch 数设一个武断的上限。它的价值全在**让数字被看见**，所以它的正确形态是 `check` 末尾多打一行，以及债务面板上的一条趋势线。
 
 ### 2.5 由测试强制
 
@@ -202,6 +208,10 @@ bun run check        # stage 收尾，必须 PASS
 
 判断标准：**违反它会不会让用户丢字节或被 AI 抢笔**。会 → 不变量级。
 
+**一条检查里混着两档硬度时，把不变量级的子条单列成独立检查**，不要给同一条检查标两个硬度。理由是豁免语义：硬度决定能不能 `exempt`，而「这条检查可以豁免一半」是无法表达的——一旦允许，`harness-exempt` 就会被用来绕过不变量级的子条，而它本该无豁免。
+
+典型例子：`check:bridge` 本体是纪律级（暴露面与快照一致），但「preload 不得暴露任何绕过落笔 CAS 或给 Agent 开写路径的通道」直指不变量 3 与 4，是**不变量级**。**Stage 3 桥上出现第一个引擎通道的当天，必须把这一子条拆成独立检查。**
+
 ### 5.4 长程任务的中间态
 
 分两级，这条直接决定跨包重构做不做得成：
@@ -243,14 +253,18 @@ harness 与 001 的 Stage 0 一起做，但**不必一次做全**：
 | 时机 | 做什么 |
 |---|---|
 | Stage 0 | 包边界、`check` / `check:fast` 两级骨架、`check:deps`、`check:bridge`、`check:workspace`、三种处置记号、CLAUDE.md 初版（含卡住协议） |
-| Stage 1 | 类型层五条、启动打点断言 |
-| Stage 2 | round-trip、composition 冻结 |
+| Stage 1 | 类型层**两条**（`CopyKey`、`ThemeVar`）、启动打点断言、纪律 20 由 review 升 lint。**升 `ThemeVar` 的同时删掉纪律 3 的 lint 规则**（§6.1 一条纪律只用一种手段） |
+| Stage 2 | round-trip、composition 冻结、`check:theme` |
+| Stage 3 | 类型层第三条（`BookDirectory`：AgentBridge 每请求必带 `directory`）、`check:artifacts`、`check:patches`、**`check:bridge` 的不变量级子条单列** |
+| Stage 4 | 类型层第四、五条（system prompt 常量字面量联合；落笔只接受 `{range, expectedText}`，不提供无校验重载） |
+| Stage 5+ | 各 stage 引入自己的纪律与检查，随功能一起长 |
+
+> **§2.1 那五条不是同一个 stage 能做完的**——每条都要等自己的宿主类型先存在。原先笼统排在 Stage 1，实施时会发现三条无处可依，然后要么硬造宿主、要么静默跳过（后者更可能）。
 
 > **Stage 0 实况**：字面色值（纪律 3）、组件不碰 `window.api`（纪律 1）、日志不转储 `process.env`（纪律 18）、下层四包不 import 进程侧代码（结构 3）这四条**提前到 Stage 0 落地**了，实现在 `scripts/check-discipline.mjs`，作为 `lint` 的第一步跑——所以它们在 `typecheck` 之前就给出带编号的失败信息。
 >
 > 纪律 3 在 §2.1 里本打算升级成类型（`ThemeVar`）。Stage 1 建主题变量表时**二选一**：升类型就把 lint 规则删掉，别两头都留（§6.1，一条纪律只用一种手段）。
 >
 > `check:artifacts` 与 smoke 因为要构建，按 §3 只进 CI，不进 `check`；`check:artifacts` 本身随 Stage 3 的 vendor 构建一起加——现在没有产物可查，加了也抓不到东西（§6.2）。
-| Stage 3+ | 各 stage 引入自己的纪律与检查，随功能一起长 |
 
 **原则：一条纪律在被写进架构文档的同一时刻，就要决定它由谁强制。** 没有强制手段的纪律，等于没有这条纪律——它只是文档里的一句愿望。

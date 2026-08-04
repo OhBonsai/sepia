@@ -6,7 +6,7 @@
 >
 > **收录判据**：结论若相反，下游要不要返工？要 → 写在这里；不要 → 留给下游。
 >
-> **下游两份**：[`../plan/sepia-impl-plan.md`](../plan/sepia-impl-plan.md) 定代码结构、模块与依赖方向、构建 CI 测试、初始化序列与 stage 拆解；ultra spec 在其上做文件级细化与组件扩充。
+> **下游三份**：[`../plan/001_boot.md`](../plan/001_boot.md) 定代码结构、模块与依赖方向、构建 CI 测试、初始化序列与 stage 拆解；[`../plan/002_boot_harness.md`](../plan/002_boot_harness.md) 把纪律翻译成机器判定；[`../plan/003_stage_playbook.md`](../plan/003_stage_playbook.md) 定每个 stage 的九节模板与看板。ultra spec 在其上做文件级细化与组件扩充。
 
 ---
 
@@ -347,6 +347,19 @@ renderer 内唯一的 agent 切面是 **AgentBridge 五方法**：`openThread` /
 
 **流式**：解析层负责补全未闭合语法与块级 memo；揭示节奏为 24ms 批次、按词与标点边界 snap、无逐字补间；`prefers-reduced-motion` 命中则整块秒显。四条稳定性不变量：**冻结即定、结构块绝不闪 raw、揭示单调只增、节奏与 token 到达率解耦**。
 
+**CM6 接入的字节硬约束（不变量 2，Stage 1 实测得出）**。CodeMirror 6 会**静默规范化换行**，这是不变量 2 最现实的一条威胁，且它在两层上都成立：
+
+- `EditorState.create()` 默认按 `DefaultSplit = /\r\n?|\n/` 拆行——**CRLF 文件读进去就没有 CR 了**；
+- 即便显式设了 `EditorState.lineSeparator` facet，**`state.doc.toString()` 仍恒用 LF 拼行**：`Text.sliceString(from, to, lineSep = "\n")` 的默认值是硬编码的，与 facet 无关，而 `toString()` 不传它。只有 `state.sliceDoc()` 才传 `state.lineBreak`。
+
+**两个 API 差一个字符，后果是用户整个文件被静默改写。** 因此三条硬约束，对所有 stage 有效：
+
+1. 读入前先检出换行风格与 BOM，并在写出时原样还原；
+2. `baseExtensions` 恒设 `lineSeparator`；
+3. **取全文一律经统一封装（`readDoc()`），不许直接调 `doc.toString()`** ——按 002 §2.1 的模式，让调用方没有写错的机会。
+
+守卫是「读入—写出字节保真」单测（001 §6，Stage 1 起），fixture 须覆盖 LF / CRLF / CR / 无尾换行 / 混用换行 / BOM / 非 ASCII / 超长行 / 空文件。**Stage 2 起接装饰时，这三条不因新增扩展而放松。**
+
 **主题**：CSS 自定义属性是唯一真相。shadcn 变量组加 Sepia 纸的语义变量；CM6 主题与语法高亮写 `var(...)`，因此换主题只换变量、不重建扩展，光标与滚动位置不丢；mermaid 从 computed style 读同一组变量。
 
 **代码高亮有两处，必须由同一份色板派生**：纸上的代码块由 CM6 自己高亮；markup 浮层与线程回放里的代码块由流式 markdown 库高亮（其内部用 Shiki——VS Code 同款高亮器，特点是**把颜色内联进 HTML**，因而吃不到 CSS 变量，需用它的双主题输出模式）。两处不同源就会出现「同一段代码在纸上和在浮层里两个样」。**可选的简化**：Agent 面板里本就很少出现代码块，若确认不需要，关掉该库的高亮即可——两个高亮器的一致性问题随之消失。缩放走主进程 API。
@@ -418,13 +431,17 @@ L0 → L1 的体验差距远大于 L1 → L2：**只读渲染就已经解决了�
 
 视频不支持——markdown 无原生视频语法，只能写 `<video>` 而 HTML 属 D 类不渲染，为它单开 widget 不值当（已进非目标）。
 
-**保存失败**。提示 → 自动重试 3 次 → 仍失败则拦截关闭，由用户确认是否强制关闭。这是 ⌘Q 无对话框规则的唯一例外。
+**保存失败**。终态：提示 → 自动重试 3 次 → 仍失败则拦截关闭，由用户确认是否强制关闭。这是 ⌘Q 无对话框规则的唯一例外。
+
+**分两档落地**，因为保存路径从 Stage 1 就存在，而完整重试在 Stage 7——中间六个 stage 不能没有说法：**Stage 1 起保证「失败可见、不静默、不假装成功」**（有可见提示，脏标记保留）；**Stage 7 补完整的重试与拦截关闭**。不写清这一档，Stage 1 要么过度实现，要么静默吞掉错误。
 
 **查找替换**。篇内 ⌘F 查找、⌘⌥F 替换，用 CM6 的 search 能力但**自绘 UI** 以统一主题、快捷键与文案；book 级全文搜索仍在非目标。
 
 ### 4.5 配置
 
-单一 `~/.config/sepia/config.json`，字段树镜像设置清单的四个一级，全量默认值集中在 `defaults.ts`。文件只存与默认值的差异，带 `version`，未识别字段保留。
+单一 `~/.sepia/config.json`（与 T-25、纪律 20 一致——**应用自有文件不散落 XDG**；此处原写 `~/.config/sepia/`，2026-08-04 订正），字段树镜像设置清单的四个一级，全量默认值集中在 `defaults.ts`。文件只存与默认值的差异，带 `version`，未识别字段保留。
+
+**这里描述的是终态字段树，不是任何一个 stage 的建设清单。** 各 stage 只往 `defaults.ts` 加**自己真正读取**的字段——提前铺满会逼着当前 stage 替后面的 stage 裁默认值（例如「上下文范围」的默认值属 Stage 4，不该在 Stage 1 被顺手定下）。同 001 §1 仓库结构图的 `[Sn]` 标注。
 
 MVP 无设置 UI——**改配置即改这个文件**，这也是后续功能开关的入口：新功能先进 `defaults.ts` 加字段，UI 后到。配置内永不包含权限类字段。
 
@@ -445,6 +462,19 @@ t0 进程启动
 ```
 
 主题必须在首帧之前落到 `<html>`，且窗口创建时带 `backgroundColor`——否则白底闪一下再变暗，正砸在「白纸秒开」的观感上。
+
+**打点口径（t0–t5）**。纪律 12 的强制方式是打点断言，所以口径必须是设计真相而非各 stage 各自定义。六个点的定义写进 `core/types`，**改口径的那次提交必须同时改断言与预算表**。
+
+| 点 | 位置 | 含义 |
+|---|---|---|
+| t0 | `main/index.ts` 第一行可执行语句 | 进程启动。**不是 `app.whenReady`**——那已经晚了几十到上百毫秒 |
+| t1 | `app.whenReady` 回调进入 | Electron 就绪 |
+| t2 | `new BrowserWindow()` 返回 | 窗口对象已建，尚未可见 |
+| t3 | `ready-to-show` 触发、`show()` 之后 | **窗口可见**，主题属性必须已在 `<html>` 上 |
+| t4 | renderer 侧 page 文件内容到手 | 纸的字节已到 |
+| t5 | CM6 `EditorView` 就绪且光标落位 | **可写**。t0→t5 即「冷启动 <1s」所指 |
+
+预算：t0→t5 < 1s、t0→t3 < 500ms、t3→t5 < 500ms。**测法以打包产物为准**（不是 dev），常温冷启动连跑 10 次取 P50 与 P90，未签名 macOS 的首次 Gatekeeper 验证单独标注、不混入统计。
 
 **原则**
 - 启动同步路径上只允许窗口、单文件与 CM6，其余一律后置。
@@ -515,7 +545,7 @@ core ──→ editor ─┐
 | 17 | 文件监听须抑制自写回声（路径 + 刚写入 mtime 过滤） | 单测 |
 | 18 | **日志绝不记录凭据**，尤其不得整体转储进程环境变量 | lint + review |
 | 19 | 落笔用单 transaction 且隔离为独立 undo 单元 | 单测 |
-| 20 | 应用自有文件只写 `~/.sepia`，不散落 XDG | review |
+| 20 | 应用自有文件只写 `~/.sepia`，不散落 XDG | lint（禁硬编码其他配置路径，002 §2.3；Stage 1 落地——**那是第一次真往磁盘写应用文件**） |
 | 21 | system prompt 必须是常量，可变内容一律进 user message | review |
 | 22 | markup 全链埋 t0–t5 打点，口径固定 | smoke 断言 |
 
@@ -523,18 +553,18 @@ core ──→ editor ─┐
 
 ## 6. 验证
 
-**没有阻塞 ultra spec 的先行验证项。** 下表是 Day-1 骨架搭起来时要逐条勾的核对清单——②到⑤的共同点是**失败时静默**（裸奔的服务器、失效的 deny），因此必须显式勾，不能默认成立。
+**没有阻塞 ultra spec 的先行验证项。** 下表是**引擎接入时**要逐条勾的核对清单——除 ③ 外全部依赖 vendor/opencode，因此**归 Stage 3**，不是 Stage 0 的骨架清单（001 §7 把引擎排在 Stage 3）。② 到 ⑤ 的共同点是**失败时静默**（裸奔的服务器、失效的 deny），因此必须显式勾，不能默认成立。
 
-| # | 核对项 |
-|---|---|
-| ① | 在 submodule 上下文内构建出产物 |
-| ② | fork 后环境变量鉴权生效 |
-| ③ | 自定义 scheme 加载 renderer，CORS 放通 |
-| ④ | 显式 `directory` 建 session，注入的 deny 生效 |
-| ⑤ | SSE 事件流与 delta 累积正确 |
-| ⑥ | PTY 桩生效、产物里零 `.node`、wasm 复制到位 |
+| # | 核对项 | 归属 |
+|---|---|---|
+| ① | 在 submodule 上下文内构建出产物 | Stage 3 |
+| ② | fork 后环境变量鉴权生效 | Stage 3 |
+| ③ | 自定义 scheme 加载 renderer，CORS 放通 | **Stage 0 建立**（scheme 与 Origin 非 null）／Stage 3 验证 CORS 放通 |
+| ④ | 显式 `directory` 建 session，注入的 deny 生效 | Stage 3 |
+| ⑤ | SSE 事件流与 delta 累积正确 | Stage 3 |
+| ⑥ | PTY 桩生效、产物里零 `.node`、wasm 复制到位 | Stage 3 |
 
-**测试范围**：Vitest 覆盖锚点对齐、config merge、GitService 解析、command registry、AgentBridge（mock SSE）、md round-trip；Playwright `_electron` smoke 覆盖冷启动打点断言、写字到保存到 commit、强杀引擎后纸仍可写、外部改文件后锚点重对齐或优雅降级；真 LLM 链路手跑，不进 CI。
+**测试范围**：Vitest 覆盖锚点对齐、config merge、GitService 解析、command registry、AgentBridge（mock SSE）、md round-trip；Playwright `_electron` smoke（**Stage 1 起引入**——Stage 0 没有可断言的 DOM，其 smoke 用自启动开关脚本）覆盖冷启动打点断言、写字到保存到 commit、强杀引擎后纸仍可写、外部改文件后锚点重对齐或优雅降级；真 LLM 链路手跑，不进 CI。
 
 ---
 

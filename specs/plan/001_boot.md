@@ -21,12 +21,17 @@ sepia/
   bunfig.toml
   turbo.json
   tsconfig.base.json
-  scripts/
-    build-engine.ts              # vendor 构建 + 产物搬运
-    check-bridge.mjs             # preload 白名单守卫（CI）
-    check-artifacts.ts           # 产物自检：wasm 齐全、零 .node
-    models-dev-snapshot.json     # 构建期离线快照
-  vendor/
+  scripts/                       # 行尾 [Sn] = 该项落地的 stage
+    check.mjs                    # [S0] 两级检查入口
+    check-bridge.mjs             # [S0] preload 白名单守卫
+    check-deps.mjs               # [S0] 依赖图守卫（声明侧）
+    check-workspace.mjs          # [S0] vendor 不入 workspace
+    check-marks.mjs              # [S0] 三种处置记号统计
+    check-discipline.mjs         # [S0] 纪律 1/3/18 与结构 3
+    build-engine.ts              # [S3] vendor 构建 + 产物搬运
+    check-artifacts.ts           # [S3] 产物自检：wasm 齐全、零 .node
+    models-dev-snapshot.json     # [S3] 构建期离线快照
+  vendor/                        # [S3] Stage 0~2 该目录不存在
     opencode/                    # submodule，锁 tag —— 不在任何 workspace glob 内
   packages/
     core/                        # 锚点、config、类型、文案 —— 外部依赖趋近于零
@@ -36,6 +41,8 @@ sepia/
     app/                         # Electron 装配 + 领域组件（唯一 import electron 的包）
   specs/
 ```
+
+**这是终态结构，不是 Stage 0 要建齐的清单。** 行尾 `[Sn]` 标的是该项落地的 stage；没标的属 Stage 0。读到这张图时**不要去把没标 `[S0]` 的建出来**——尤其 `build-engine.ts` 挂在 `predev`/`prebuild` 上，提前装上会让 Stage 1 每次 `bun run dev` 都先过一遍 vendor 构建，而 Stage 1 恰恰是需要高频重启去调冷启动的 stage。
 
 每个包自带 `package.json`、`tsconfig.json` 与自己的测试；跨包依赖用 `workspace:*`，第三方版本走根 `catalog`。**`vendor/` 在 `packages/` 之外，天然不被 workspace 匹配**，其 `bun install` 只由 `scripts/build-engine.ts` 显式调用——首次搭建时须验证 bun 不会误走进 vendor 的嵌套 workspace。
 
@@ -214,19 +221,22 @@ electron-builder
 
 ## 6. 测试布局
 
-| 层 | 位置 | 覆盖 |
-|---|---|---|
-| 纯函数单测 | `packages/core/test/` | **锚点三级对齐**（重点，拿真实文章对拍）、config merge、默认值 |
-| 编辑器单测 | `packages/editor/test/` | md 结构判定、A/B/C 类装饰、**composition 冻结**、剪贴板双格式、round-trip |
-| Agent 单测 | `packages/agent/test/` | AgentBridge（mock SSE：乐观更新 / 增量拼接 / abort）、上下文组装、任务注册表 |
-| 服务单测 | `packages/app/test/main/` | GitService 队列与 commit 触发、原子写、watcher 回声抑制、config 迁移 |
-| app 单测 | `packages/app/test/` | command registry、落笔 CAS、领域组件 |
-| smoke | 根 `test/smoke/`（跨包，起真应用） | 冷启动打点断言、写字→保存→commit、强杀引擎后纸可写、外部改文件后重对齐或降级、单实例二次启动开新窗口 |
-| 真 LLM | 根 `test/manual/` | markup 全链 <15s、diff 落笔、徽章回放。**手跑，不进 CI** |
+| 层 | 位置 | 工具 | 覆盖 |
+|---|---|---|---|
+| 纯函数单测 | `packages/core/test/` | Vitest | **锚点三级对齐**（重点，拿真实文章对拍）、config merge、默认值 |
+| 编辑器单测 | `packages/editor/test/` | Vitest | md 结构判定、A/B/C 类装饰、**composition 冻结**、剪贴板双格式、round-trip |
+| Agent 单测 | `packages/agent/test/` | Vitest | AgentBridge（mock SSE：乐观更新 / 增量拼接 / abort）、上下文组装、任务注册表 |
+| 服务单测 | `packages/app/test/main/` | Vitest | GitService 队列与 commit 触发、原子写、watcher 回声抑制、config 迁移 |
+| app 单测 | `packages/app/test/` | Vitest | command registry、落笔 CAS、领域组件 |
+| smoke | 根 `test/smoke/`（跨包，起真应用） | **Stage 0：自启动开关脚本；Stage 1 起：Playwright `_electron`** | 冷启动打点断言、写字→保存→commit、强杀引擎后纸可写、外部改文件后重对齐或降级、单实例二次启动开新窗口 |
+| 真 LLM | 根 `test/manual/` | 手跑 | markup 全链 <15s、diff 落笔、徽章回放。**手跑，不进 CI** |
 
 **测试跟着包走**（turbo 按包并行跑），只有需要起真应用的 smoke 与真 LLM 用例留在根目录。`core` / `editor` / `agent` 三包的测试**都不需要 Electron**——这正是切包换来的东西。
 
-**round-trip 单测是不变量 2 的守卫**：一批真实 md 读入再写出，断言字节完全一致。
+**round-trip 单测是不变量 2 的守卫**，**拆两半、分两个 stage**——写文件从 Stage 1 就开始了，守卫不能晚一个 stage，否则整个 Stage 1 里不变量 2 无人看守：
+
+- **Stage 1 · 读入—写出保真**：一批真实 md 读入再原样写出，断言字节完全一致。覆盖 CRLF / LF、有无 BOM、有无尾换行、非 ASCII。
+- **Stage 2 · 装饰不改写字节**：加载全部装饰与 widget 后重复上述断言，证明揭示层只影响显示、不碰文档。
 
 ---
 
@@ -237,8 +247,8 @@ electron-builder
 | Stage | 内容 | 验收 |
 |---|---|---|
 | **0 骨架** | **五个包与依赖图立起来**（core/editor/agent/ui/app）、bun workspaces + catalog + turbo、electron-vite 三段、单实例 + 多窗口、preload 白名单 + CI 守卫、CI 出三平台产物 | 三平台包可下载、能开空窗口；**turbo 能按包并行跑 typecheck 与测试** |
-| **1 纸** | CM6 宿主、打开 / 保存单文件、原子写、`session.json`、主题变量与首帧注入、启动打点 | **冷启动 <1s 打开上次 page 且可写**；无白闪 |
-| **2 语法** | A/B/C/D 四类装饰全覆盖、四类块 widget + 行内公式、IME 冻结规则、剪贴板、查找替换、撤销 | 全语法 live preview；**IME 组合输入不被打断**；round-trip 单测通过 |
+| **1 纸** | CM6 宿主、打开 / 保存单文件、原子写、`session.json`、主题变量与首帧注入、启动打点 | **冷启动 <1s 打开上次 page 且可写**；无白闪；**读入—写出字节保真单测通过** |
+| **2 语法** | A/B/C/D 四类装饰全覆盖、四类块 widget + 行内公式、IME 冻结规则、剪贴板、查找替换、撤销 | 全语法 live preview；**IME 组合输入不被打断**；**装饰不改写字节**单测通过 |
 | **3 引擎** | vendor 构建、sidecar、隔离 env、凭据注入、AgentBridge 五方法、SSE、退避重启与缺席态 | **`kill -9` 后纸全功能可写**，⌘K 给缺席提示 |
 | **4 markup** | ⌘K 浮层与分阶段家具、任务四元组、块式上下文、流式渲染、diff、落笔 CAS | **全链 <15s**；生成期间编辑正文则落笔中止而非覆盖 |
 | **5 版本与徽章** | GitService 队列、三触发 commit、锚点三级对齐、徽章与线程面板、⌘⇧H 还白 | 外部改文件后**重对齐成功或优雅降级孤儿** |
