@@ -31,9 +31,9 @@ function fail(message: string): never {
   process.exit(1)
 }
 
-function run(cmd: string[], cwd: string, label: string): void {
+function run(cmd: string[], cwd: string, label: string, env?: Record<string, string>): void {
   const started = Date.now()
-  const result = Bun.spawnSync(cmd, { cwd, stdout: 'inherit', stderr: 'inherit' })
+  const result = Bun.spawnSync(cmd, { cwd, stdout: 'inherit', stderr: 'inherit', env: env ? { ...process.env, ...env } : undefined })
   if (result.exitCode !== 0) fail(`${label} 失败（退出码 ${result.exitCode}）`)
   console.log(`build-engine: ${label} ✓ ${((Date.now() - started) / 1000).toFixed(1)}s`)
 }
@@ -83,8 +83,15 @@ if (!process.env['SEPIA_ENGINE_REBUILD'] && existsSync(MANIFEST)) {
 }
 
 // ── vendor 安装与构建 ────────────────────────────────────────────────────────
+// 构建期不出网（001 §4）：build-node 经 generate.ts 读模型目录，
+// MODELS_DEV_API_JSON 指向仓库内快照——Stage 3 漏实现，150 §1.1 补上
+// （本机无网时 build-node 直连 models.dev 失败，实测）。
+// env 必须显式传：Bun 父进程改 process.env 不进 spawnSync 子进程（实测）。
+const MODELS_SNAPSHOT = join(ROOT, 'scripts/models-dev-snapshot.json')
+if (!existsSync(MODELS_SNAPSHOT)) fail('缺少 scripts/models-dev-snapshot.json（models.dev api.json 快照，构建期不出网的依赖）')
+
 run(['bun', 'install', '--frozen-lockfile'], VENDOR, 'vendor bun install')
-run(['bun', 'script/build-node.ts'], VENDOR_PKG, 'build-node')
+run(['bun', 'script/build-node.ts'], VENDOR_PKG, 'build-node', { MODELS_DEV_API_JSON: MODELS_SNAPSHOT })
 
 // ── 产物校验：恰好一份 ESM + 四份 wasm ──────────────────────────────────────
 if (!existsSync(join(DIST, 'node.js'))) fail('build-node 没有产出 dist/node/node.js')

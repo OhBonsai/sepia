@@ -76,7 +76,7 @@
 | `check:deps` | 实际依赖图 == 001 §2.2 的图 | Stage 0 | 是，gate |
 | `check:workspace` | `vendor/` 不被任何 workspace glob 匹配 | Stage 0 | 是，gate |
 | `check:theme` | Shiki 与 CM6 的 token 色值表由同一份色板派生（比对生成结果） | **Stage 2**（有色板时） | 是，gate |
-| `check:artifacts` | 构建产物中 `.wasm` 四份齐全、`.node` 数量为零 | **Stage 3**（有产物时） | 否，只进 CI（要构建） |
+| `check:artifacts` | 构建产物中 `.wasm` 四份齐全、`.node` 数量为零 | **Stage 3**（有产物时） | **是，gate**（2026-08-05 改判：新鲜 checkout 首跑即抓到「产物未构建」的红，150 §1.1；原排「只进 CI」作废） |
 | `check:patches` | 统计 `patches/opencode/` 数量并打印——**不阻塞，只让增长可见**（T-18 的健康指标） | **Stage 3**（有 `patches/opencode/` 时） | **不是 gate**——是 `check` 输出里的一行数字，不影响 PASS/FAIL |
 
 **「不是 gate」这一档要单列出来**：`check:patches` 若按 gate 实现，它要么恒绿（等于 §6.2 说的净负担），要么给 patch 数设一个武断的上限。它的价值全在**让数字被看见**，所以它的正确形态是 `check` 末尾多打一行，以及债务面板上的一条趋势线。
@@ -101,7 +101,7 @@ bun run check
 2. **输出可判定**——最后一行是 `PASS` 或 `FAIL: <哪条纪律>`，不要让人从一屏日志里找。
 3. **失败信息指向纪律编号**，而不只是报错行。`FAIL: 纪律 3（字面色值）— packages/app/src/x.tsx:12`，AI 才知道去读哪一条。
 
-`check:artifacts` 与 smoke 因为要构建，只进 CI，不进 `check`。
+smoke 要起真应用，只进 CI。`check:artifacts` 原排「只进 CI」，Stage 3 实际纳入了 gate、2026-08-05 改判留用——引擎产物是本地开发的前置，新鲜 checkout 首跑它真抓到过「产物未构建」（150 §1.1）。
 
 ---
 
@@ -274,6 +274,6 @@ harness 与 001 的 Stage 0 一起做，但**不必一次做全**：
 >
 > 纪律 3 在 §2.1 里本打算升级成类型（`ThemeVar`）。Stage 1 建主题变量表时**二选一**：升类型就把 lint 规则删掉，别两头都留（§6.1，一条纪律只用一种手段）。
 >
-> `check:artifacts` 与 smoke 因为要构建，按 §3 只进 CI，不进 `check`；`check:artifacts` 本身随 Stage 3 的 vendor 构建一起加——现在没有产物可查，加了也抓不到东西（§6.2）。
+> `check:artifacts` 随 Stage 3 的 vendor 构建一起加，**实际进了 `check` gate**（与这条原议相反，§2.4 已改判——它抓到过真问题）。smoke 仍只进 CI。
 
 **原则：一条纪律在被写进架构文档的同一时刻，就要决定它由谁强制。** 没有强制手段的纪律，等于没有这条纪律——它只是文档里的一句愿望。
