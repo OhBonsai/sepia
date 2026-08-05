@@ -78,6 +78,10 @@ export function registerIpc(paths: SepiaPaths): void {
     const book = directoryOf(directory)
     if (bridge === null) return absent
     if (book === null) return { ok: false, reason: 'directory must be absolute' }
+    // 预热池里有就直接拿（T-32）——这一步省下的正是 ⌘K 关键路径上的一次往返。
+    // 池空了就现开一个：预热是优化，不是前置条件。
+    const warm = supervisor.takeWarmThread()
+    if (warm !== null) return { ok: true, value: { id: warm } }
     try {
       return { ok: true, value: await bridge.openThread({ directory: book }) }
     } catch (error) {

@@ -10,7 +10,8 @@
 //   纪律 3 —— 组件与 CM6 扩展不得出现字面色值
 //   纪律 8 —— `.sepia/` 下 json 一律原子写：services 之外不得直接调 fs 写接口
 //   纪律 18 —— 日志不得整体转储 process.env
-//   纪律 20 —— 应用自有文件只写 `~/.sepia`，不散落 XDG
+//   纪律 12 —— renderer 不得从 `@sepia/agent` 主入口 import（SDK 会进 bundle）
+//   纪律 20 —— Sepia 自有文件的路径只由 services/paths.ts 派生
 
 import { isExempt, read, Report, stripComments, walk } from './lib/harness.mjs'
 
@@ -122,6 +123,28 @@ function load(file) {
   }
 }
 
+// ── 纪律 12：renderer 不得从 `@sepia/agent` 主入口 import ────────────────────
+// 主入口连着 `bridge.ts` → `@opencode-ai/sdk` → `node:child_process`。
+// **这条是被一次真实的构建失败逼出来的**（Stage 4）：浮层要用上下文组装器，
+// 顺手写了 `from '@sepia/agent'`，typecheck 全绿，`bun run build` 才红在
+// `"spawnSync" is not exported by "__vite-browser-external"`。
+//
+// 类型层够不到它——类型不关心谁被打进哪个 bundle；build 够得到，但 build 不在
+// `check:fast` 里，反馈慢一个数量级。所以补一条 lint：纯任务层走 `@sepia/agent/tasks`。
+// （Stage 3 实测过代价：SDK 值导入让 t0→t3 从 316ms 涨到 1089ms。）
+{
+  const ID = '纪律 12'
+  const TITLE = 'renderer 只许从 @sepia/agent/tasks 取纯任务层'
+  for (const file of sourcesIn(['packages/app/src/renderer'])) {
+    const { lines, rawLines } = load(file)
+    for (const { specifier, line, index } of importsOf(lines)) {
+      if (specifier !== '@sepia/agent') continue
+      if (isExempt(rawLines, index, ID)) continue
+      report.add(ID, TITLE, `${file}:${line}`, '主入口连着 SDK 与 node:child_process，会进 renderer bundle')
+    }
+  }
+}
+
 // ── 纪律 3：组件与 CM6 扩展不得出现字面色值 ──────────────────────────────────
 // 调色板文件是**唯一**允许出现色值的地方，其余一律写 var(--…)。
 // Stage 1 起连 .css 也扫——只放过那一个调色板文件。不扫 css 的话，
@@ -174,21 +197,46 @@ function load(file) {
   }
 }
 
-// ── 纪律 20：应用自有文件只写 `~/.sepia`，不散落 XDG ─────────────────────────
+// ── 纪律 20：Sepia 自有文件的路径只由 paths.ts 派生 ──────────────────────────
 // 架构 §4.5 曾把 config.json 写成 `~/.config/sepia/`，与 §2.2、§2.3、T-25 与本条冲突。
 // 这条规则就是让那种写法**再也写不进来**（120 §1.1 问题七）。
+//
+// **重述（150 §1.4 条目 0）。** 原措辞「不散落 XDG」把两件事混成一件，于是规则
+// 见 XDG 名字就报，而 `agent-supervisor.ts` 里那四个 `XDG_*_HOME` **恰恰是纪律 20 的
+// 实现**——它们把引擎的四个根指进 `~/.sepia/engine/`。规则读不出这层意图，就逼出了
+// 四条「这其实是合规」的豁免。而 002 §5.1 对这种情形的判词是明确的：**粒度太粗、
+// 无法表达合法例外时，正确解法是收窄规则，不是逼出一堆豁免**（豁免是给真例外用的，
+// 不是给误报用的；用它遮误报，误报就永远不会被修）。
+//
+// 重述后分两支，对应两类符号：
+//
+//   ① XDG **变量名**（`XDG_*_HOME`）—— 只是"某个根在哪"的问句，本身无善恶，
+//      善恶全在它被指向哪。判定得起来的地方只有派生点，所以只许出现在 `paths.ts`
+//      （同纪律 3 的 theme.css、纪律 8 的 fsio.ts：把危险符号圈进一个文件，规则就
+//      退化成「别处不许出现」，不必再逐处判断意图）。
+//
+//   ② XDG **根字面量**（`.config/sepia`、`Library/Application Support`…）——
+//      **含 paths.ts 在内，哪里都不许**。这一支刻意不给 paths.ts 开口子：
+//      120 §1.1 问题七 那个 bug（`~/.config/sepia/config.json`）真要重演，
+//      重演的地点恰恰就是 paths.ts。整个文件放行，等于把规则唯一该守的门拆了。
+//
+// 于是「读别人的文件」（credentials.ts 读用户 opencode 的 auth.json，架构 §4.1 的
+// 一次性导入）落在 ② 上：它不是「Sepia 自有文件散落 XDG」，但它真的碰了别人家的根，
+// **仍然报**，由豁免留痕。那是真例外——豁免本来就是为真例外准备的。
 {
   const ID = '纪律 20'
-  const TITLE = '应用自有文件只写 ~/.sepia，不散落 XDG'
-  const XDG =
-    /(?:XDG_[A-Z_]+|\.config\/sepia|Library\/Application Support|AppData\/(?:Roaming|Local)|\.local\/share)/
+  const TITLE = 'Sepia 自有文件的路径只由 services/paths.ts 派生'
+  /** XDG 变量名的唯一住址。改这里就要同步改 paths.ts 顶部的长注释。 */
+  const DERIVER = 'packages/app/src/main/services/paths.ts'
+  const XDG_NAME = /XDG_[A-Z_]+/
+  const XDG_ROOT = /(?:\.config\/sepia|Library\/Application Support|AppData\/(?:Roaming|Local)|\.local\/share)/
   for (const file of productionSources()) {
     const { lines, rawLines } = load(file)
     lines.forEach((line, index) => {
-      const hit = XDG.exec(line)?.[0]
+      const hit = XDG_ROOT.exec(line)?.[0] ?? (file === DERIVER ? null : XDG_NAME.exec(line)?.[0])
       if (!hit) return
       if (isExempt(rawLines, index, ID)) return
-      report.add(ID, TITLE, `${file}:${index + 1}`, `${hit} —— 应用自有文件一律走 services/paths.ts`)
+      report.add(ID, TITLE, `${file}:${index + 1}`, `${hit} —— Sepia 自有文件一律走 services/paths.ts`)
     })
   }
 }
@@ -209,4 +257,4 @@ function load(file) {
   }
 }
 
-report.finish('discipline —— 结构 3 / 纪律 1 / 纪律 3 / 纪律 8 / 纪律 18 / 纪律 20')
+report.finish('discipline —— 结构 3 / 纪律 1 / 纪律 3 / 纪律 8 / 纪律 12 / 纪律 18 / 纪律 20')

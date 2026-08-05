@@ -16,6 +16,17 @@ if (initialTheme === 'light' || initialTheme === 'dark') {
   else document.addEventListener('DOMContentLoaded', apply, { once: true })
 }
 
+// markup 的两个配置项走**与主题同一条路**：argv → 根节点属性，renderer 读属性。
+// 刻意不在 `api` 上开 key——桥恰好八项是 150 §1.3 的申报值，而这两个值开机即定死
+// （MVP 没有设置 UI，改 config.json 本来就要重启），够不上一个永久暴露面。
+const markupParams = process.argv.find((arg) => arg.startsWith('--sepia-markup='))?.slice('--sepia-markup='.length)
+
+if (markupParams !== undefined) {
+  const apply = (): void => document.documentElement.setAttribute('data-sepia-markup', markupParams)
+  if (document.documentElement) apply()
+  else document.addEventListener('DOMContentLoaded', apply, { once: true })
+}
+
 const api = {
   app: {
     platform: process.platform,

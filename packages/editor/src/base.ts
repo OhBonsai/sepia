@@ -4,8 +4,12 @@ import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view
 
 import type { EditorView as EditorViewType } from '@codemirror/view'
 
+import type { MarkupRun } from '@sepia/core'
+
 import type { LineEnding } from './bytes.ts'
 import type { SearchApi } from './extensions/search-types.ts'
+import { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
+import { applyMarkup, type ApplyMarkupRequest, type ApplyMarkupResult } from './markup.ts'
 
 // 纯文本编辑所需的**最小**扩展集合。
 //
@@ -115,6 +119,23 @@ export interface MountedEditor {
   destroy(): void
   /** 查找替换的驱动接口。UI 是 app 侧的 React，经这里驱动 CM6（editor ↮ ui）。未装语法层时为 null。 */
   search: SearchApi | null
+  /** 取一段区间的现值。浮层提交时用它取快照，落笔时那份快照就是 CAS 的 compare 那一半。 */
+  slice(from: number, to: number): string
+  /** 当前选区。⌘K 拿它决定改写哪一段。 */
+  selection(): { from: number; to: number }
+  /**
+   * 落笔（纪律 9c / 19 / 22）。**这是 AI 产出进入正文的唯一途径**——
+   * `MountedEditor` 刻意不交出 `EditorView`，正是为了让这句话在类型上为真：
+   * 拿到 view 的人可以 `dispatch({ changes })` 绕过 CAS，拿不到就绕不过去。
+   * `run` 必填：m5 与落笔同生，不许回头补。
+   */
+  applyMarkup(request: ApplyMarkupRequest, run: Pick<MarkupRun, 'mark'>): ApplyMarkupResult
+  /**
+   * 在选区所在行之后开一个块级 widget 宿主，返回容器节点供 React portal 挂入。
+   * 后文由 CM6 自己排下去——**推开，不是遮盖**（W6 硬语义，150 §1.8 风险 4）。
+   */
+  openMarkupHost(): HTMLElement
+  closeMarkupHost(): void
 }
 
 /**
@@ -124,12 +145,15 @@ export interface MountedEditor {
  * 这不是洁癖：`app` 的 `package.json` 里没有 `@codemirror/*`，它想直接 import 也
  * 编译不过（结构 2 的编译期物理约束）。能力该沉到哪层，包边界会直接告诉你。
  */
+/** 浮层宿主的尺寸观察者。一次只可能有一个浮层，模块级单例够用。 */
+let markupHostResize: ResizeObserver | null = null
+
 export function mountEditor(options: MountOptions): MountedEditor {
   const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, ...rest } = options
   const state = EditorState.create({
     doc,
     selection: { anchor: Math.min(Math.max(cursor, 0), doc.length) },
-    extensions: [baseExtensions(rest), syntax ?? []],
+    extensions: [baseExtensions(rest), markupHostExtension(), syntax ?? []],
   })
   const view = new EditorView({ state, parent })
 
@@ -164,6 +188,41 @@ export function mountEditor(options: MountOptions): MountedEditor {
       view.destroy()
     },
     search: searchFactory?.(view) ?? null,
+    slice: (from, to) => view.state.sliceDoc(from, to),
+    selection: () => {
+      const { from, to } = view.state.selection.main
+      return { from, to }
+    },
+    applyMarkup: (request, run) => applyMarkup(view, request, run),
+    openMarkupHost: () => {
+      // 容器由**这里**建、由 app 填。建在 editor 侧是因为它的生命周期跟着 widget 走，
+      // 而不是跟着 React 的挂载走——收起时 CM6 把它移出文档流，节点本身还在，
+      // React 那边卸载与否互不影响。
+      const dom = document.createElement('div')
+      dom.className = 'sepia-markup-host'
+      const pos = markupHostPos(view)
+      view.dispatch({ effects: setMarkupHost.of({ pos, dom, height: 0 }) })
+
+      // **高度得实测后回填。** 容器交出去时是空的，React 之后才 portal 进内容，
+      // 而 CM6 的高度图在插入当下就定了——不回填，gutter 会按 0 排，
+      // 行号与被推开的正文错位（150 §1.8 风险 4 的收尾）。
+      let measured = -1
+      markupHostResize?.disconnect()
+      markupHostResize = new ResizeObserver(() => {
+        const height = dom.offsetHeight
+        // 只在真变了才 dispatch：在 ResizeObserver 回调里再触发布局，很容易转成死循环
+        if (height === measured || height === 0) return
+        measured = height
+        view.dispatch({ effects: setMarkupHost.of({ pos, dom, height }) })
+      })
+      markupHostResize.observe(dom)
+      return dom
+    },
+    closeMarkupHost: () => {
+      markupHostResize?.disconnect()
+      markupHostResize = null
+      view.dispatch({ effects: setMarkupHost.of(null) })
+    },
   }
 }
 

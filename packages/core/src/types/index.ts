@@ -25,6 +25,16 @@ export interface AppConfig {
   provider: Record<string, unknown>
   /** 默认模型，形如 `providerID/modelID`。为 null 表示用引擎侧默认。 */
   model: string | null
+  /**
+   * markup 的上下文取材范围（150 §1.1 裁决 2.1，默认「整篇」）。
+   * 「整篇」指**取材链默认展开到覆盖整篇**，不是整篇必然进 prompt——
+   * 超 `contextBudgetTokens` 时仍然硬截断，离选区近的先进。
+   */
+  contextScope: 'selection' | 'page'
+  /** 上下文预算硬上限（架构 §4.3c）。截断发生时离选区近的内容先进。 */
+  contextBudgetTokens: number
+  /** session 预热池大小（T-32）。引擎就绪时预建这么多个空 session。 */
+  sessionPrewarm: number
 }
 
 /**
@@ -65,6 +75,39 @@ export const STARTUP_BUDGET_MS = {
   processToWindowVisible: 500,
   /** t3 → t5 */
   windowToCaretReady: 500,
+} as const
+
+/**
+ * markup 全链打点。**命名空间与启动的 t0–t5 彻底分开**（150 §1.2）。
+ *
+ * 架构 §4.3b 与纪律 22 原文也把这条链叫 t0–t5，与 §4.7 的启动口径同名——两套口径
+ * 同名，smoke 断言与趋势表必混。150 §1.9 回流 2 已请人改，本 stage 就地采用 m0–m5。
+ */
+export const MARKUP_MARKS = ['m0', 'm1', 'm2', 'm3', 'm4', 'm5'] as const
+export type MarkupMark = (typeof MARKUP_MARKS)[number]
+
+/** 每个点的含义。改这里就要同时改 150 §1.2 的打点行与预算表。 */
+export const MARKUP_MARK_MEANING: Record<MarkupMark, string> = {
+  m0: '提交（浮层发送，家具此刻就位，不等首 token）',
+  m1: '请求发出（AgentBridge 把这一轮交给引擎）',
+  m2: '首字节（SSE 连接上收到的第一个字节）',
+  m3: '首 token（第一个文本增量到手，可上屏）',
+  m4: '完成（流结束，diff 算完可展示）',
+  m5: '落笔（正文 transaction 提交完成）',
+}
+
+export type MarkupTimeline = Partial<Record<MarkupMark, number>>
+
+/** markup 预算（架构 §1.1 Aha #2 / 150 §1.7）。断言直接读它，别在测试里另抄数字。 */
+export const MARKUP_BUDGET_MS = {
+  /** m0 → m3 */
+  submitToFirstToken: 3_000,
+  /** m3 → m4 */
+  firstTokenToDiff: 12_000,
+  /** m0 → m4，DoD 一 */
+  submitToDiff: 15_000,
+  /** m4 → m5 */
+  apply: 300,
 } as const
 
 /** 保存与打开的结果。失败必须可见，不许静默（120 §1.3 功能深度表）。 */

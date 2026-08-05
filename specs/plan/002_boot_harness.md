@@ -63,7 +63,7 @@
 | 纪律 | 规则 |
 |---|---|
 | 组件不得 import `window.api` / 不直接请求引擎 | `no-restricted-imports`：组件目录禁 import `preload`、禁 `fetch` |
-| 只写 `~/.sepia`，不散落 XDG | 禁止硬编码其他配置路径的正则规则 |
+| Sepia 自有文件的路径只由 `paths.ts` 派生 | 两支正则：**XDG 变量名**（`XDG_*`）只许出现在 `services/paths.ts`——指向哪才是纪律关心的事，而那只有在派生点看得出来；**XDG 根字面量**（`.config/sepia`、`Library/Application Support`…）**含 `paths.ts` 在内哪里都不许**，因为 120 §1.1 问题七 那个 bug 真要重演，重演的地点恰恰就是 `paths.ts` |
 | `.sepia` 下 json 原子写 | 禁在 services 之外直接 `fs.writeFile` |
 | 日志不记凭据 | 禁 `log(process.env)` 与 `JSON.stringify(process.env)` |
 | 组件不得出现用户可见字面串 | 中文字面量检测（弱规则，允许标注豁免） |

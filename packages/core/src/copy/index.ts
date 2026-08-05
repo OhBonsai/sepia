@@ -35,6 +35,24 @@ export const copy = {
   'agent.absent.line': 'Agent 缺席，纸照常可写',
   'agent.k.absent': 'Agent 缺席。纸照常可写，稍后再试 ⌘K',
   'agent.k.starting': 'Agent 正在就位…',
+
+  // W6/W7：markup 浮层的三阶段家具（D-29）。
+  // 动词属于 **Agent 配置**而不是界面文案（D-41 / 150 §1.3 core 行），所以它们不在这里。
+  'markup.placeholder': '想怎么改这段？',
+  'markup.empty': '先选中一段文字，再按 ⌘K',
+  'markup.streaming': '正在改写…',
+  'markup.stop': '停止',
+  'markup.apply': '落笔',
+  'markup.discard': '放弃',
+  'markup.retry': '重试',
+  'markup.followup': '还想再改点什么？',
+  'markup.reset': '重置到 diff',
+  'markup.diff.original': '原文',
+  'markup.diff.revised': '新文',
+  'markup.failed': '这一轮没跑通，纸没有被动过',
+  'markup.aborted': '已停止，纸没有被动过',
+  'markup.stale': '这段文字在生成期间被改过了，没有落笔。重试或手动处理',
+  'markup.model': '模型',
 } as const
 
 export type CopyKey = keyof typeof copy

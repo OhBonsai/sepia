@@ -16,6 +16,7 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 // 在引擎就绪后才动态 import——那时纸早已可写。
 import type { AgentBridge, EngineEvent } from '@sepia/agent'
 import {
+  asBookDirectory,
   ENGINE_INITIAL,
   engineReduce,
   parseModel,
@@ -25,7 +26,7 @@ import {
 } from '@sepia/core'
 
 import type { Credentials } from './credentials.ts'
-import type { SepiaPaths } from './paths.ts'
+import { engineIsolationEnv, type SepiaPaths } from './paths.ts'
 import { getTimeline } from './perf.ts'
 
 const SIDECAR_READY_TIMEOUT_MS = 60_000
@@ -150,23 +151,14 @@ function engineConfigContent(credentials: Credentials | null): string {
 }
 
 /**
- * 引擎子进程的隔离环境（架构 §4.1）：四个 XDG 根全部指进 `~/.sepia/engine/`，
- * **fork 时设定**——引擎在模块加载期就把路径算死了，事后改无效。
- * 这些变量只进子进程，不进 Sepia 环境，不落盘（140 §1.3 暴露面表）。
+ * 引擎子进程的隔离环境（架构 §4.1）。路径隔离部分由 `paths.ts` 的
+ * `engineIsolationEnv` 派生——**fork 时设定**，引擎在模块加载期就把路径算死了，
+ * 事后改无效。这些变量只进子进程，不进 Sepia 环境，不落盘（140 §1.3 暴露面表）。
  */
 function engineEnv(paths: SepiaPaths, credentials: Credentials | null): Record<string, string> {
-  const root = paths.engineHome
   return {
     PATH: process.env['PATH'] ?? '',
-    HOME: join(root, 'home'),
-    // harness-exempt: 纪律 20 引擎隔离根——四个 XDG 全部指进 ~/.sepia/engine，正是纪律 20 的实现而非违反
-    XDG_CONFIG_HOME: join(root, 'config'),
-    // harness-exempt: 纪律 20 同上
-    XDG_DATA_HOME: join(root, 'data'),
-    // harness-exempt: 纪律 20 同上
-    XDG_STATE_HOME: join(root, 'state'),
-    // harness-exempt: 纪律 20 同上
-    XDG_CACHE_HOME: join(root, 'cache'),
+    ...engineIsolationEnv(paths),
     OPENCODE_CONFIG_CONTENT: engineConfigContent(credentials),
     // 鉴权走环境变量，不走 listen 参数（架构 §4.1；server/auth.ts 的回退链）
     OPENCODE_SERVER_USERNAME: 'sepia',
@@ -272,6 +264,37 @@ async function onReady(generation: number, importMs: number, listenMs: number): 
     spawnToReadyMs: Math.round(performance.now() - state.startedAt),
   })
   void streamLoop(generation)
+  void prewarmSessions(generation)
+}
+
+/**
+ * session 预热（T-32 / 架构 §4.3b 条目 2）：引擎就绪时先建好空 session，
+ * 把建 session 的那一次往返**从 ⌘K 的关键路径上摘掉**。
+ *
+ * 池大小是配置项（`sessionPrewarm`，MVP 取 1）。预热失败一声不响——
+ * 它是优化不是功能，失败的代价只是慢一点，不该让引擎显得没就绪（不变量 1）。
+ */
+async function prewarmSessions(generation: number): Promise<void> {
+  const size = state.config?.sessionPrewarm ?? 0
+  const directory = state.paths === null ? null : asBookDirectory(state.paths.home)
+  if (directory === null) return
+  for (let i = 0; i < size; i++) {
+    if (state.generation !== generation || state.bridge === null) return
+    try {
+      const thread = await state.bridge.openThread({ directory })
+      warmThreads.push(thread.id)
+    } catch {
+      return
+    }
+  }
+  diag({ event: 'prewarm', count: warmThreads.length })
+}
+
+/** 预热好的空 session。⌘K 优先取用，取空了就现开一个。 */
+const warmThreads: string[] = []
+
+export function takeWarmThread(): string | null {
+  return warmThreads.shift() ?? null
 }
 
 /** 事件流常开：断了就重连（引擎还在的前提下）。事件扇出给 ipc 层。 */

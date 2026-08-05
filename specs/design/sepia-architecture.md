@@ -552,7 +552,7 @@ core ──→ editor ─┐
 | 17 | 文件监听须抑制自写回声（路径 + 刚写入 mtime 过滤） | 单测 |
 | 18 | **日志绝不记录凭据**，尤其不得整体转储进程环境变量 | lint + review |
 | 19 | 落笔用单 transaction 且隔离为独立 undo 单元 | 单测 |
-| 20 | 应用自有文件只写 `~/.sepia`，不散落 XDG | lint（禁硬编码其他配置路径，002 §2.3；Stage 1 落地——**那是第一次真往磁盘写应用文件**） |
+| 20 | **写自己的**：Sepia 自有文件的路径一律由 `services/paths.ts` 派生（`~/.sepia` 之下）。**读别人的**：读别的应用自己的文件不归本条管，但仍须标注留痕 | lint（XDG 变量名只许出现在 `paths.ts`；XDG 根字面量含 `paths.ts` 在内哪里都不许，002 §2.3。Stage 1 落地，Stage 4 重述——150 §1.4 条目 0） |
 | 21 | system prompt 必须是常量，可变内容一律进 user message | review |
 | 22 | markup 全链埋 t0–t5 打点，口径固定 | smoke 断言 |
 

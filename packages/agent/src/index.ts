@@ -6,3 +6,7 @@
 
 export * from './bridge.ts'
 export * from './sse.ts'
+export * from './tasks/prompts.ts'
+export * from './tasks/registry.ts'
+export * from './tasks/context.ts'
+export * from './tasks/verbs.ts'

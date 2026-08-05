@@ -12,6 +12,17 @@ export {
   type MountOptions,
   type MountedEditor,
 } from './base.ts'
+export { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
+export {
+  applyMarkup,
+  markupPlan,
+  markupTransaction,
+  type ApplyMarkupRequest,
+  type ApplyMarkupResult,
+  type MarkupPlan,
+  type MarkupRange,
+  type MarkupTarget,
+} from './markup.ts'
 export {
   BOM,
   detectLineEnding,

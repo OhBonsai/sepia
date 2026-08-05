@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
-import { type EngineStatus, type SessionState, t } from '@sepia/core'
-import { type SearchApi, type TextFidelity, readFidelity, writeFidelity } from '@sepia/editor'
+import { markupReport, type EngineStatus, type MarkupRun, type SessionState, t } from '@sepia/core'
+import {
+  type MountedEditor,
+  type SearchApi,
+  type TextFidelity,
+  readFidelity,
+  writeFidelity,
+} from '@sepia/editor'
 import { Loading, SearchPanel } from '@sepia/ui'
 
 import { EditorHost } from '../editor/host.tsx'
+import { markupConfig } from '../markup/config.ts'
+import { nearbyBlocks } from '../markup/nearby.ts'
+
+// 浮层**整体惰性加载**（纪律 12 / 150 §1.2 冷启动零增量）：
+// 它连着 remend 与 Shiki，静态 import 会把它们全部拖进启动 bundle——
+// Stage 2 的 KaTeX 教训原样适用。构建产物里它是独立 chunk，冷启动一个字节都不多。
+const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.tsx')).MarkupPanel }))
 import { registerCommand } from '../commands/registry.ts'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
@@ -38,6 +52,13 @@ export function App(): React.JSX.Element {
   const [kHint, setKHint] = useState<string | null>(null)
   const kHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const draft = useRef<string>('')
+
+  // markup 浮层（Stage 4）。range 与 snapshot 是 CAS 的两半，同生同灭。
+  const editor = useRef<MountedEditor | null>(null)
+  const [markup, setMarkup] = useState<
+    { range: { from: number; to: number }; snapshot: string; host: HTMLElement } | null
+  >(null)
+  const [report, setReport] = useState<string | null>(null)
 
   // 查找替换：CM6 的驱动接口由 EditorHost 上抛，面板是 ui 的 dumb 组件，这里装配
   const searchApi = useRef<SearchApi | null>(null)
@@ -150,15 +171,58 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
-  // ⌘K：本 stage 只显示状态（140 §1.2 刹车表——浮层的形态归 Stage 4）。
+  // ⌘K：Stage 4 起唤起真浮层。缺席时仍走 Stage 3 的状态提示线——
+  // **缺席不是错误态，是一条链路降级**：纸照常可写（不变量 1）。
   const summon = useCallback((): void => {
-    if (kHintTimer.current !== null) clearTimeout(kHintTimer.current)
-    setKHint(engine === 'ready' ? null : t(engine === 'absent' ? 'agent.k.absent' : 'agent.k.starting'))
-    kHintTimer.current = setTimeout(() => {
-      kHintTimer.current = null
-      setKHint(null)
-    }, K_HINT_MS)
-  }, [engine])
+    if (engine !== 'ready') {
+      if (kHintTimer.current !== null) clearTimeout(kHintTimer.current)
+      setKHint(t(engine === 'absent' ? 'agent.k.absent' : 'agent.k.starting'))
+      kHintTimer.current = setTimeout(() => {
+        kHintTimer.current = null
+        setKHint(null)
+      }, K_HINT_MS)
+      return
+    }
+    const instance = editor.current
+    if (instance === null || page === null) return
+    // 选区与快照**在这一刻一起取**：它们是 CAS 的两半，晚取一个就对不上了。
+    const range = instance.selection()
+    if (range.from === range.to) return
+    // 宿主是 CM6 里的块级 widget——浮层进文档流，后文被推下去而不是被盖住（W6）
+    setMarkup({ range, snapshot: instance.slice(range.from, range.to), host: instance.openMarkupHost() })
+  }, [engine, page])
+
+  /** 收起浮层：React 侧卸载 + CM6 侧把块级 widget 移出文档流，两边必须一起。 */
+  const dismissMarkup = useCallback((): void => {
+    editor.current?.closeMarkupHost()
+    setMarkup(null)
+  }, [])
+
+  /** 落笔（纪律 9c / 19 / 22）。CAS 不通过就提示重来，纸一个字节不动。 */
+  const applyMarkup = useCallback(
+    (revised: string, run: Pick<MarkupRun, 'mark' | 'timeline'>): void => {
+      const instance = editor.current
+      if (instance === null || markup === null || page === null) return
+      const result = instance.applyMarkup(
+        { range: markup.range, expectedText: markup.snapshot, replacement: revised },
+        run,
+      )
+      dismissMarkup()
+      // 全链六点的判读结果挂到 shell 上——smoke 拿它断言「六点齐、顺序对、在预算内」。
+      // 走 DOM 属性而不是 IPC，与启动打点走 stdout 同一个道理：不为测试在桥上加东西。
+      setReport(JSON.stringify(markupReport(run.timeline())))
+      if (!result.ok) {
+        setError(t('markup.stale'))
+        return
+      }
+      setError(null)
+      // 落笔后**立即写盘**，不等 800ms 防抖（150 §1.2）——刚落的笔不该只活在内存里
+      draft.current = instance.read()
+      setDirty(true)
+      void save()
+    },
+    [markup, page, save, dismissMarkup],
+  )
 
   useEffect(
     () => () => {
@@ -213,7 +277,7 @@ export function App(): React.JSX.Element {
   if (status === 'loading') return <Loading label={t('app.loading')} />
 
   return (
-    <div className="sepia-shell" data-sepia-shell={status}>
+    <div className="sepia-shell" data-sepia-shell={status} data-sepia-markup-report={report ?? undefined}>
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}
@@ -221,6 +285,26 @@ export function App(): React.JSX.Element {
       )}
       {kHint !== null && <div className="sepia-agent-hint">{kHint}</div>}
       {error !== null && <div className="sepia-error">{error}</div>}
+      {markup !== null &&
+        page !== null &&
+        createPortal(
+          <Suspense fallback={null}>
+            <MarkupPanel
+              selection={markup.snapshot}
+              // 选中对象的类别：MVP 只认「文字」一种，其余四组动词的形状已在 agent 侧建好
+              selectionKind="text"
+              request={{
+                selection: markup.snapshot,
+                nearby: nearbyBlocks(draft.current, markup.range, markupConfig().contextScope),
+                directory: page.path.slice(0, page.path.lastIndexOf('/')),
+                budgetTokens: markupConfig().contextBudgetTokens,
+              }}
+              onApply={applyMarkup}
+              onClose={dismissMarkup}
+            />
+          </Suspense>,
+          markup.host,
+        )}
       {searchOpen !== false && page !== null && (
         <SearchPanel
           copy={{
@@ -273,6 +357,9 @@ export function App(): React.JSX.Element {
           assetBase={page.path.slice(0, page.path.lastIndexOf('/'))}
           onSearchReady={(sapi) => {
             searchApi.current = sapi
+          }}
+          onEditorReady={(instance) => {
+            editor.current = instance
           }}
           onChange={(next) => {
             draft.current = next

@@ -14,7 +14,7 @@ import { loadCredentials } from './services/credentials.ts'
 import { sepiaPaths, type SepiaPaths } from './services/paths.ts'
 import * as theme from './services/theme.ts'
 import * as registry from './windows/registry.ts'
-import { createWindow } from './windows/create.ts'
+import { createWindow, setMarkupConfig } from './windows/create.ts'
 
 // 001 §3.1 的启动序列。同步路径上**只允许**窗口、单文件与 CM6（纪律 12）——
 // git / watcher / 引擎都不在这里，它们分别归 Stage 3 与 Stage 5/6。
@@ -135,6 +135,7 @@ if (!app.requestSingleInstanceLock()) {
       // 读 config 决定主题，然后才建窗口——窗口的 backgroundColor 要用它。
       const loaded = await loadConfig(paths)
       theme.setMode(loaded.config.theme)
+      setMarkupConfig(loaded.config)
 
       registerIpc(paths)
       broadcastTheme()

@@ -27,9 +27,12 @@
     "@sepia/core": "workspace:*",
     "@sepia/editor": "workspace:*",
     "@sepia/ui": "workspace:*",
+    "@shikijs/langs": "catalog:",
     "jsonc-parser": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "remend": "catalog:",
+    "shiki": "catalog:"
   },
   "devDependencies": {
     "@swc/core": "catalog:",

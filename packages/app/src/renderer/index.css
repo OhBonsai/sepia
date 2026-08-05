@@ -117,3 +117,88 @@ body {
   cursor: pointer;
 }
 .sepia-search button:hover { background: var(--sepia-surface); }
+
+/* ── markup 浮层（W6/W7，D-29 三阶段家具）────────────────────────────────
+   气质沿用 130 已裁：无阴影、4px 圆角、无渐变、**即时切换**。
+   三个阶段之间不加过渡动画——动效只出现在流式揭示的 24ms 批次里。
+
+   W6 的硬语义是「**推开下文，非遮盖**」。落地方式是 CM6 的**块级 widget**
+   （`editor/extensions/markup-host.ts`）：浮层是文档流里的一个块，后文由 CM6
+   自己排下去。所以这里**不许出现 position: absolute / fixed**——那会让它变回遮盖，
+   而遮盖正是 W6 点名不要的那个。 */
+
+/* widget 容器由 editor 侧建，React portal 往里挂。撑满正文宽度、留出与正文对齐的边距。 */
+.sepia-markup-host {
+  padding: 8px 0;
+}
+
+.sepia-markup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--sepia-surface);
+  border-top: 1px solid var(--sepia-rule);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-markup input {
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-markup input::placeholder {
+  color: var(--sepia-ink-muted);
+}
+
+/* 焦点环用调色板，不用浏览器默认的那圈蓝——它是唯一一处不受 theme.css 管的颜色。 */
+.sepia-markup input:focus-visible,
+.sepia-markup button:focus-visible {
+  outline: 2px solid var(--sepia-caret);
+  outline-offset: 1px;
+}
+
+.sepia-markup button {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sepia-markup-verbs,
+.sepia-markup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sepia-markup-status {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-markup-preview,
+.sepia-markup-diff {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+/* 原文划线 / 新文对照。**删除段用划线而不是靠颜色单独承载信息**——
+   颜色是辅助，划线才是那条不依赖色觉的信号。 */
+[data-sepia-diff='delete'] {
+  color: var(--sepia-ink-muted);
+  text-decoration: line-through;
+}
+
+[data-sepia-diff='insert'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-selection);
+}

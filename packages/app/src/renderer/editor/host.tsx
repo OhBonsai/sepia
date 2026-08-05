@@ -22,6 +22,12 @@ export interface EditorHostProps {
   onReady: () => void
   /** 查找替换的驱动接口就绪时上抛（editor ↮ ui，UI 在 app 装配）。 */
   onSearchReady: (api: SearchApi) => void
+  /**
+   * 编辑器就绪时把 `MountedEditor` 上抛，供 ⌘K 取选区快照与落笔。
+   * **上抛的是 MountedEditor，不是 EditorView**——后者一旦出手，
+   * 谁都能 `dispatch({ changes })` 绕过 CAS，落笔就不再是唯一途径（纪律 9c）。
+   */
+  onEditorReady: (editor: MountedEditor) => void
 }
 
 export function EditorHost({
@@ -35,13 +41,14 @@ export function EditorHost({
   onScrollChange,
   onReady,
   onSearchReady,
+  onEditorReady,
 }: EditorHostProps): React.JSX.Element {
   const container = useRef<HTMLDivElement>(null)
   const editor = useRef<MountedEditor | null>(null)
 
   // 回调放进 ref：它们变化时不重建 EditorView——重建会丢光标、丢滚动、丢撤销历史。
-  const handlers = useRef({ onChange, onCursorChange, onScrollChange, onReady, onSearchReady })
-  handlers.current = { onChange, onCursorChange, onScrollChange, onReady, onSearchReady }
+  const handlers = useRef({ onChange, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady })
+  handlers.current = { onChange, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady }
 
   useEffect(() => {
     let disposed = false
@@ -66,6 +73,7 @@ export function EditorHost({
       editor.current = instance
       instance.focus()
       handlers.current.onReady()
+      handlers.current.onEditorReady(instance)
       if (instance.search) handlers.current.onSearchReady(instance.search)
     })
 

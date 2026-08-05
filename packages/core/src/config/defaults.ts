@@ -14,6 +14,16 @@ export const DEFAULT_CONFIG: AppConfig = {
   theme: 'system',
   provider: {},
   model: null,
+  contextScope: 'page',
+  contextBudgetTokens: 6_000,
+  sessionPrewarm: 1,
+}
+
+const CONTEXT_SCOPES = new Set(['selection', 'page'])
+
+/** 正整数才收；0、负数、小数、NaN 一律退回默认值——坏配置不该让应用行为变怪。 */
+function positiveInt(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback
 }
 
 const THEME_MODES = new Set(['system', 'light', 'dark'])
@@ -34,7 +44,16 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
   const theme = raw['theme']
   const provider = raw['provider']
   const model = raw['model']
-  const KNOWN = new Set(['version', 'theme', 'provider', 'model'])
+  const contextScope = raw['contextScope']
+  const KNOWN = new Set([
+    'version',
+    'theme',
+    'provider',
+    'model',
+    'contextScope',
+    'contextBudgetTokens',
+    'sessionPrewarm',
+  ])
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
     if (!KNOWN.has(key)) preserved[key] = value
@@ -48,6 +67,12 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
       // 越俎代庖地校验它，等于把引擎的 schema 抄一份到这里，升 tag 就会漂。
       provider: isRecord(provider) ? provider : DEFAULT_CONFIG.provider,
       model: typeof model === 'string' && model.includes('/') ? model : DEFAULT_CONFIG.model,
+      contextScope:
+        typeof contextScope === 'string' && CONTEXT_SCOPES.has(contextScope)
+          ? (contextScope as AppConfig['contextScope'])
+          : DEFAULT_CONFIG.contextScope,
+      contextBudgetTokens: positiveInt(raw['contextBudgetTokens'], DEFAULT_CONFIG.contextBudgetTokens),
+      sessionPrewarm: positiveInt(raw['sessionPrewarm'], DEFAULT_CONFIG.sessionPrewarm),
     },
     unknown: preserved,
   }
@@ -62,6 +87,11 @@ export function configToDisk(
   if (config.theme !== DEFAULT_CONFIG.theme) out['theme'] = config.theme
   if (Object.keys(config.provider).length > 0) out['provider'] = config.provider
   if (config.model !== null) out['model'] = config.model
+  if (config.contextScope !== DEFAULT_CONFIG.contextScope) out['contextScope'] = config.contextScope
+  if (config.contextBudgetTokens !== DEFAULT_CONFIG.contextBudgetTokens) {
+    out['contextBudgetTokens'] = config.contextBudgetTokens
+  }
+  if (config.sessionPrewarm !== DEFAULT_CONFIG.sessionPrewarm) out['sessionPrewarm'] = config.sessionPrewarm
   return out
 }
 
