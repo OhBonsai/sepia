@@ -153,10 +153,11 @@ app.whenReady
 ├─ 单实例锁：抢不到 → 把 argv 交给已运行实例 → 自身退出
 ├─ 读 ~/.sepia/config.json（缺失则用默认值）
 ├─ 解析主题 → 创建 BrowserWindow（带 backgroundColor，避免白闪）
-├─ 注册自定义特权 scheme，加载 renderer
+├─ loadFile 加载 renderer（无自定义 scheme：main 代理 ⇒ renderer 不连引擎，架构 §4.6）
 │   └─ renderer：首帧前落主题属性 → loading 态 → 读上次 page → CM6 就绪、光标就位
 └─ 异步并行（一律不挡光标）
     ├─ AgentSupervisor：portpicker → 生成密码 → fork sidecar → 健康检查 → 通知就绪
+    │   └─ **fork 在 t5（可写）之后**，空状态留兜底定时器（纪律 12 加严，140 §1.7）
     ├─ GitService：git 可用性探测 + HEAD
     ├─ watcher：chokidar 挂载 + 首次对账
     └─ 文件树索引
@@ -189,9 +190,9 @@ predev / prebuild
    └─ bun script/build-node.ts → dist/node/{node.js, *.wasm}
 
 electron-vite build
-├─ main：resolveId 'virtual:opencode-server' → vendor 产物
-│        resolveId '@lydell/node-pty' → 抛错桩（T-18）
-│        writeBundle：复制 *.wasm → out/main/chunks/
+├─ main：resolveId '@lydell/node-pty' → 抛错桩（T-18）
+│        （引擎产物不经 rollup：构建脚本把 build-node 产物复制到位，
+│         运行期 sidecar 经 SEPIA_ENGINE_ENTRY 注入的路径 import——140 §1.2）
 ├─ preload：cjs 单文件
 └─ renderer：React + Tailwind（**必须显式开 minify**——electron-vite 默认不压缩
    renderer，Stage 1 曾以 1.2MB 未压缩源码挡在首帧前，Stage 2 实测抓出；见
@@ -199,6 +200,9 @@ electron-vite build
 
 electron-builder
 └─ mac(双 arch) / win(nsis) / linux(AppImage + deb)，Day-1 不签名
+   引擎产物走 extraResources 落在 **asar 之外**（sidecar 运行期 import +
+   wasm 相对路径定位在 asar 内皆不可行；打包产物的运行期验证归入
+   `.dmg` 延后账，140 §1.9 #9）
 ```
 
 **产物自检**（每次构建后跑，失败即红）：`out/main/chunks/*.wasm` 四份齐全；产物内 `.node` 数量为零。

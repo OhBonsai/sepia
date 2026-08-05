@@ -53,7 +53,7 @@
 
 - **main**：唯一碰 OS 的进程。窗口先行（§9）、文件 IO、git、配置、opencode 进程监督。不缓存应用状态（真理源=文件），sidecar 端口/进程句柄例外（pinpin daemon-ready 铁律 3）。
 - **utilityProcess**：opencode server 宿主。崩溃不拖垮 main/renderer（承接 D-23 的进程级保证），退出由 AgentSupervisor 处理（T-12）。
-- **renderer**：sandbox + contextIsolation（T-10）。对外只有两条腿：`AgentBridge`（HTTP+SSE 直连 127.0.0.1，不过 main 转发）和 `api.ts`（preload 白名单之上的唯一封装层）。**组件禁止直接 import `window.api` 或发 fetch**——lint 强制（pinpin services 抽象铁律）。
+- **renderer**：sandbox + contextIsolation（T-10）。对外只有两条腿：`AgentBridge`（HTTP+SSE 直连 127.0.0.1，不过 main 转发）和 `api.ts`（preload 白名单之上的唯一封装层）。**组件禁止直接 import `window.api` 或发 fetch**——lint 强制（pinpin services 抽象铁律）。（**此处直连论证已被 Stage 3 裁决推翻**：AgentBridge 改跑在 main、代理 HTTP+SSE，renderer 只剩 `api.ts` 一条腿且不连引擎——实测代理开销可忽略，换来端点与 token 不进 renderer、不必为 CORS 建自定义 scheme。见架构 §2.1/§4.3，140 §1.8 风险 1。）
 
 ## 3. opencode 嵌入（T-01）
 
@@ -84,9 +84,9 @@
 **运行期**
 1. main 的 AgentSupervisor：portpicker 找空闲端口 → 生成随机密码 → `utilityProcess.fork(sidecar.js, {cwd: bookRoot, env})`。
 2. sidecar.js（与 desktop 同构，Sepia 版可更薄）：`const { Server } = await import("virtual:opencode-server")` → `Server.listen({ port, hostname: "127.0.0.1", cors: [renderer origin] })` → postMessage ready。**鉴权走 env 而非 listen 参数**（读码：auth 中间件读 `OPENCODE_SERVER_PASSWORD` / `OPENCODE_SERVER_USERNAME`，desktop 传给 listen 的同名参数实际被忽略；env 不设 = 无鉴权，fork 时必须注入）。
-3. **renderer 必须用自定义特权 scheme 加载**（如 `sepia://renderer`，`protocol.registerSchemesAsPrivileged` + `protocol.handle` 伺服构建产物），并把该 origin 写进 `cors`——desktop 即 `oc://renderer` 模式。若图省事用 `loadFile`（file:// → Origin 为 `null`），跨到 127.0.0.1 的 fetch/SSE 会被 CORS 拒掉。这是照抄清单里最容易漏的一条。
+3. **renderer 必须用自定义特权 scheme 加载**（如 `sepia://renderer`，`protocol.registerSchemesAsPrivileged` + `protocol.handle` 伺服构建产物），并把该 origin 写进 `cors`——desktop 即 `oc://renderer` 模式。若图省事用 `loadFile`（file:// → Origin 为 `null`），跨到 127.0.0.1 的 fetch/SSE 会被 CORS 拒掉。这是照抄清单里最容易漏的一条。（**已被 Stage 3 裁决推翻**：main 代理后 renderer 不连引擎，本条前提消失——实际实现就是 `loadFile`，见架构 §4.6，140 §1.8 风险 1。）
 4. 健康检查：轮询 health 端点，就绪后通知 renderer（F19 状态点由灰转实心）。整条链路异步，**永不阻塞白纸**（happy-path：sidecar ≤5s 后台）。
-5. renderer 经 `api.agent.info()` 拿 `{port, password}`，AgentBridge 以 Basic Auth 直连。
+5. renderer 经 `api.agent.info()` 拿 `{port, password}`，AgentBridge 以 Basic Auth 直连。（**同上被推翻**：端点与密码永不进 renderer，只有 main 的 AgentBridge 持有。）
 
 **环境与边界（T-11）**
 - **directory 显式传，cwd 兜底**：读码确认当前版本按 workspace 路由——每个请求的目标目录取 `?directory=` 查询参数或 `x-opencode-directory` 头，**缺省才落到 `process.cwd()`**，且 session 自带 directory。所以 fork 仍设 `cwd = book 根`（兜底正确），但 AgentBridge 每个请求/建 session **显式带 `directory = book`**，不赌默认值。项目级配置按该 directory 向上查找 merge——但 D-13 的 deny 层**不走文件，走 T-19 的内存注入**。

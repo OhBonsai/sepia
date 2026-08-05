@@ -6,7 +6,7 @@
 >
 > **收录判据**：结论若相反，下游要不要返工？要 → 写在这里；不要 → 留给下游。
 >
-> **下游三份**：[`../plan/001_boot.md`](../plan/001_boot.md) 定代码结构、模块与依赖方向、构建 CI 测试、初始化序列与 stage 拆解；[`../plan/002_boot_harness.md`](../plan/002_boot_harness.md) 把纪律翻译成机器判定；[`../plan/003_stage_playbook.md`](../plan/003_stage_playbook.md) 定每个 stage 的九节模板与看板。ultra spec 在其上做文件级细化与组件扩充。
+> **下游三份**：[`../plan/001_boot.md`](../plan/001_boot.md) 定代码结构、模块与依赖方向、构建 CI 测试、初始化序列与 stage 拆解；[`../plan/002_boot_harness.md`](../plan/002_boot_harness.md) 把纪律翻译成机器判定；[`../plan/003_stage_playbook.md`](../plan/003_stage_playbook.md) 定每个 stage 的九节模板、stage 并行准入与合并仪式（看板已裁死不做，见 003 §3 头注）。ultra spec 在其上做文件级细化与组件扩充。
 
 ---
 
@@ -23,7 +23,7 @@
 | 冷启动 → 可写 | **< 1s** |
 | 进程启动 → 窗口可见 | < 500ms |
 | 窗口 → 上次的 page 渲染 + 光标就位 | < 500ms |
-| 引擎启动 + 健康检查 | ≤ 5s，后台，不阻塞任何 UI |
+| 引擎启动 + 健康检查 | ≤ 5s，后台，不阻塞任何 UI；**fork 不得早于 t5（可写）**，空状态有兜底定时器（Stage 3 实测 fork 落在 t3–t5 之间照样抢 CPU，140 §1.7） |
 
 **Aha #2 markup 落笔**（灵魂型）
 
@@ -61,19 +61,21 @@
 ┌─ Electron main ───────────────────────────────────────────┐
 │  窗口 / 菜单 / 原生对话框      ipc.ts（REST 风格 handler） │
 │  GitService   ConfigService   AgentSupervisor（起停/健康） │
+│  AgentBridge（代理引擎 HTTP+SSE；端点与 token 不进 renderer）│
 └────┬──────────────────────────────────┬───────────────────┘
-     │ utilityProcess.fork              │ IPC（contextBridge 白名单）
+     │ utilityProcess.fork + HTTP+SSE   │ IPC（contextBridge 白名单）
 ┌────▼───────────────────┐   ┌──────────▼────────────────────┐
 │ utilityProcess         │   │ renderer（React）             │
 │  import opencode server│   │  CM6 编辑器宿主 · markup 浮层  │
-│  Server.listen(...)    │◄──┤  线程面板 · Home · 状态点      │
-│  cwd = book 根         │HTTP│  AgentBridge · api.ts         │
-└────────────────────────┘+SSE└───────────────────────────────┘
+│  Server.listen(...)    │   │  线程面板 · Home · 状态点      │
+│  cwd = book 根         │   │  api.ts（唯一桥腿，agent 面    │
+└────────────────────────┘   │  走 api.agent.*）             │
+                             └───────────────────────────────┘
 ```
 
 - **main** 是唯一接触 OS 的进程：窗口、文件 IO、git、配置、引擎监督。**不缓存应用状态**（真相在文件），引擎端口与进程句柄是仅有的例外。
 - **utilityProcess** 是引擎宿主。它崩溃不拖垮其他进程——这是不变量 1 的进程级兑现。
-- **renderer** 跑在 sandbox + contextIsolation 下，**对外只有两条腿**：`AgentBridge`（HTTP+SSE 直连 127.0.0.1）与 `api.ts`（preload 白名单之上的唯一封装）。
+- **renderer** 跑在 sandbox + contextIsolation 下，**对外只有一条腿**：`api.ts`（preload 白名单之上的唯一封装），其 `agent.*` 组到达 main 侧的 AgentBridge（Stage 3 裁决：main 代理，见 §4.3——端点与 token 不进 renderer）。
 
 ### 2.2 真相住在哪
 
@@ -86,7 +88,7 @@
 | 应用配置 | `~/.sepia/config.json` |
 | 编辑器会话状态（打开的 tab、光标、滚动） | `~/.sepia/session.json`——是状态不是设置，与配置分开 |
 | 引擎配置 | **内存**，启动时注入，不落盘 |
-| 凭据 | **Sepia 管控**：API key 类进系统钥匙串、启动时注入、引擎侧零落盘；OAuth 类落 Sepia 自有目录 |
+| 凭据 | **Sepia 管控**：API key 类进系统钥匙串（safeStorage 背书）、启动时注入、引擎侧零落盘；OAuth 类落 Sepia 自有目录 |
 | 主题当前值 | main 进程，首帧前注入 renderer |
 | UI 临时态 | renderer 内存，不持久化 |
 
@@ -184,7 +186,7 @@
 
 ### 4.1 引擎嵌入
 
-`vendor/opencode` 为 submodule 并锁 tag。构建期在其 monorepo 根 `bun install` 后跑 `build-node`，产出单文件 ESM 与四份 wasm；electron-vite 把 `virtual:opencode-server` 指向该产物。运行期 `utilityProcess.fork`，在子进程内 `import` 并 `Server.listen`。
+`vendor/opencode` 为 submodule 并锁 tag。构建期在其 monorepo 根 `bun install` 后跑 `build-node`，产出单文件 ESM 与四份 wasm；**产物不经 rollup**——由构建脚本复制到位，运行期 sidecar `import` 经 `SEPIA_ENGINE_ENTRY` 注入的路径并 `Server.listen`。原设想照抄上游 desktop 的 `virtual:opencode-server` 虚拟模块形态，Stage 3 判其不适合本项目：30MB 单文件 ESM 过 rollup 白烧构建时间且会改动字节（`check:artifacts` 失去稳定被检对象），而四份 wasm 必须按相对路径与 bundle 同目录（140 §1.2）。此属偏离阶梯的**第二级（构建脚本层）**，零 patch 达成。
 
 产物是**纯 JS + wasm**：wasm 与平台无关，构建管线只需把它们复制到位；两个原生模块已归零——PTY 走"调用即抛错"的桩，文件监听不打包（上游本就优雅降级）。
 
@@ -193,7 +195,7 @@
 - **引擎环境完全隔离**：`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME` 四个根全部指向 Sepia 自有目录。引擎的全部路径都由这四个根派生，因此用户机器上装没装 opencode、配了多少 provider / MCP / plugin / agent，与 Sepia 无关。**这些环境变量必须在 fork 时设定**——引擎在模块加载期就把路径算死了，事后再改无效。
 - 引擎配置由 Sepia 维护，经 `OPENCODE_CONFIG_CONTENT` 内存注入；隔离出来的配置目录保持为空，book 内也不落配置文件。
 - **凭据由 Sepia 管控**（不是「随 opencode」）。token 是用户的东西，不该寄存在另一个应用的文件里——那意味着对方的升级或清理能弄坏你，且写入责任不清。分两类：
-  - **API key 类**（绝大多数 provider）：存系统钥匙串，fork 时随内存配置注入引擎（`provider.<id>.options.apiKey`）。**引擎侧零落盘**，隔离目录里不出现凭据文件。
+  - **API key 类**（绝大多数 provider）：以 **safeStorage**（OS 钥匙串背书的加密，密文落 `~/.sepia/credentials.json`；不用 keytar——那是原生模块，违反 T-18）存储，fork 时随内存配置注入引擎（`provider.<id>.options.apiKey`）。**引擎侧零落盘**，隔离目录里不出现凭据文件。**无凭据可读时一次都不碰 safeStorage**——macOS 上 `isEncryptionAvailable()` 会弹模态钥匙串对话框，挡在启动路径上即违反不变量 1（Stage 3 实测踩到，140 §1.1 问题四）。
   - **OAuth 类**（订阅式登录）：需要 refresh 与写回，只能持久化在**引擎的隔离目录**内。仍归 Sepia 所有，只是形态是自有目录下的文件。**MVP 不做**——改写文字用 API key 即可。
 - **获取途径与共享无关**：首次启动若 Sepia 侧无凭据，可从用户的 opencode 凭据文件**只读导入一次**，导入后即归 Sepia。这是取得方式，不是持续共享；Sepia 永不修改用户 opencode 的任何文件。
 - 鉴权走环境变量，不是 `listen` 参数。
@@ -249,7 +251,7 @@
 
 ### 4.3 Agent 边界
 
-renderer 内唯一的 agent 切面是 **AgentBridge 五方法**：`openThread` / `send` / `stream` / `interrupt` / `listModels`。内部用 `@opencode-ai/sdk`，端点映射以锁定 tag 的 OpenAPI 为准。
+Sepia 触碰引擎的唯一面是 **AgentBridge 五方法**：`openThread` / `send` / `stream` / `interrupt` / `listModels`。内部用 `@opencode-ai/sdk`，端点映射以锁定 tag 的 OpenAPI 为准。**AgentBridge 跑在 main**（Stage 3 裁决，140 §1.8 风险 1）：代理 HTTP+SSE 到引擎，端点与 token 不进 renderer；renderer 经 preload 白名单的 `api.agent.*` 组到达。IPC 逐事件转发实测开销每事件 ≈0.013ms，对 <200 事件/s 的 token 流可忽略；换来的是暴露面最小，且不必为 CORS 建自定义 scheme。
 
 协议要点：只有字符串字段走增量拼接，其余整 part 替换；SSE 有心跳，用于区分「模型停了」与「连接死了」；未知事件类型一律忽略。
 
@@ -260,7 +262,7 @@ renderer 内唯一的 agent 切面是 **AgentBridge 五方法**：`openThread` /
 **落笔是有条件的写入。** diff 是针对"提交那一刻的文本"算出来的，而生成期间用户可以继续写字。所以落笔前必须校验：目标区间的当前文本是否仍等于提交时的快照？不等则**不落笔**，提示用户重来或手动处理。覆盖用户刚写下的字，是对「AI 不抢笔」最严重的违反。
 
 **原则**
-- 组件只能经 AgentBridge 碰 agent，不得直接请求引擎。
+- 组件只能经 `api.ts`（其 `agent.*` 组到达 main 侧 AgentBridge）碰 agent，不得直接请求引擎。
 - 每个请求显式带 `directory`，不赌默认值。
 - 上下文当场取值，不缓存、不预先塞进 session。
 - 落笔前做 compare-and-swap 校验，不匹配即中止。
@@ -287,7 +289,7 @@ renderer 内唯一的 agent 切面是 **AgentBridge 五方法**：`openThread` /
 2. **session 预热**：引擎就绪时预建空 session，把建 session 的往返从关键路径上摘掉。预热池大小是配置项，MVP 取 1。
 3. **system prompt 是常量**：可变内容一律进 user message。这既让行为可预测，也是 provider prompt caching 的前提（缓存要求前缀逐字节一致）。**若把时间戳、页面名塞进 system prompt，缓存永远不会命中。**
 4. **用途 → 模型的映射**（D-36 的用途指派表）：即使 MVP 只配一个模型，这层映射也要在——"快速改写用小模型"是降 TTFT 最有效的手段，事后加会牵动整条调用链。
-5. **上下文最小化**：只带选区与前后文（D-31）。prompt 越短 TTFT 越低——这既是产品决策也是性能手段。
+5. **上下文预算**：取材沿距离衰减链展开、到预算硬截断（§4.3c）；上下文范围默认**整篇**（用户裁决 2026-08-05）。prompt 越短 TTFT 越低——截断发生时离选区近的内容先进。
 6. **首 token 即上屏**：流式链路不做任何缓冲；生成中的家具在提交瞬间就位（D-29），不等首 token。
 
 **可以后面做的**：热 session 池扩容 ｜ 对齐 provider 的 prompt caching（短 prompt 通常够不到缓存门槛，收益有限）｜ 多模型竞速取先到（花两份钱，不划算）｜ 引擎侧连接复用核验 ｜ 推测性预取（用户按下发送前不能发——会花钱且未必用）。
@@ -312,7 +314,7 @@ renderer 内唯一的 agent 切面是 **AgentBridge 五方法**：`openThread` /
 
 **取材与预算**。整篇 2 万字约 3 万 token——**带整篇与「首 token < 3s」直接冲突**，且会稀释模型注意力。MVP 按**距离衰减**取材：选区 → 所在段 → 前后各 N 段 → 篇首（标题与 frontmatter，用于全局定位），到预算上限即**硬截断**，不做摘要、不做检索。上限是配置项。
 
-> **一处需产品裁决**：设置清单里「上下文范围」默认值是**整篇**，与上述预算冲突。建议默认改为「选区 + 邻近」，整篇作为可选项。
+> **产品裁决（2026-08-05）**：上下文范围默认**整篇**，维持（与设置清单现状一致）。与 TTFT 预算的冲突交由机制消化：取材仍沿距离衰减链展开（选区 → 所在段 → 前后各 N 段 → 篇首），到预算上限**硬截断**——整篇超预算时，离选区近的内容先进，远的被截。「默认整篇」指取材链默认展开到覆盖整篇，不是整篇必然进 prompt。
 
 **多轮之间不累积**。一篇文章里做过五次 markup，第六次**不带**前五次的痕迹——每次干净、可预测、快且便宜（D-12 / D-31）。代价是模型可能重复建议已被拒绝的改法；若这成为真实痛点，加一种「本篇已落笔摘要」块即可，组装器不用改。
 
@@ -452,9 +454,9 @@ MVP 无设置 UI——**改配置即改这个文件**，这也是后续功能开
 
 ### 4.6 安全
 
-`contextIsolation: true` / `sandbox: true` / `nodeIntegration: false` / CSP 限制 `connect-src` 为 self 与本地引擎。preload 只暴露 contextBridge 白名单，命名 REST 风格。引擎绑 127.0.0.1，随机密码 Basic Auth，CORS 只放 renderer origin。
+`contextIsolation: true` / `sandbox: true` / `nodeIntegration: false` / CSP 限制 `connect-src` 为 self——renderer 不连引擎（§4.3 main 代理裁决）。preload 只暴露 contextBridge 白名单，命名 REST 风格。引擎绑 127.0.0.1，随机密码 Basic Auth——只有 main 的 AgentBridge 持有密码。
 
-**renderer 用自定义特权 scheme 加载**，该 origin 写进 CORS——`loadFile` 会让 Origin 为 `null`，跨到本地引擎的请求将被拒。
+**renderer 用 `loadFile` 加载**（Origin 为 `null` 无妨）——main 代理裁决（140 §1.8 风险 1）之后 renderer 不连引擎，自定义特权 scheme + CORS 放通原本要解决的问题不复存在；将来若 renderer 需要直连，再引入 scheme。
 
 **原则**：preload 白名单的任何变更由 CI 守卫比对，白名单膨胀即阻塞。
 
@@ -540,9 +542,9 @@ core ──→ editor ─┐
 | 9 | md 读写字节级 round-trip，永不规范化用户字节 | 单测 |
 | 9b | git 操作走 GitService 的串行队列，杜绝并发撞 `index.lock` | review |
 | 9c | 落笔前做 compare-and-swap 校验，快照不匹配即中止 | 单测 |
-| 10 | AgentBridge 每请求显式带 `directory` | review |
+| 10 | AgentBridge 每请求显式带 `directory` | 类型（`BookDirectory`，Stage 3 落地，002 §2.1） |
 | 11 | 引擎配置只经内存注入；**book 内不落任何 Sepia 文件**（含锚点、记忆） | review |
-| 12 | 启动同步路径只允许窗口、单文件与 CM6 | 打点断言 |
+| 12 | 启动同步路径只允许窗口、单文件与 CM6；**引擎 fork 在 t5 之后** | 打点断言 |
 | 13 | 主题首帧前注入，窗口带 `backgroundColor` | 目视 + 打点 |
 | 14 | Shiki 与 CM6 的高亮由同一份色板派生 | review |
 | 15 | 不 patch vendor 源码，偏离走配置层 | review |
@@ -564,7 +566,7 @@ core ──→ editor ─┐
 |---|---|---|
 | ① | 在 submodule 上下文内构建出产物 | Stage 3 |
 | ② | fork 后环境变量鉴权生效 | Stage 3 |
-| ③ | 自定义 scheme 加载 renderer，CORS 放通 | **Stage 0 建立**（scheme 与 Origin 非 null）／Stage 3 验证 CORS 放通 |
+| ③ | renderer 加载与引擎连接面 | renderer 经 `loadFile` 加载；main 代理 ⇒ renderer 不连引擎，CORS 问题不复存在（140 §1.8 风险 1） | Stage 3 裁决使本项自动成立 |
 | ④ | 显式 `directory` 建 session，注入的 deny 生效 | Stage 3 |
 | ⑤ | SSE 事件流与 delta 累积正确 | Stage 3 |
 | ⑥ | PTY 桩生效、产物里零 `.node`、wasm 复制到位 | Stage 3 |
