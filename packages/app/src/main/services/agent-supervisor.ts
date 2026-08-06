@@ -6,21 +6,25 @@
 // smoke #8 以 stdout 的 fork 时间戳断言这一点。
 
 import { randomBytes } from 'node:crypto'
+import { mkdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 
-// **只 import type**：值导入会把 @opencode-ai/sdk 的整张模块图拖上同步启动路径
+// **主入口只 import type**：值导入会把 @opencode-ai/sdk 的整张模块图拖上同步启动路径
 // （纪律 12）。实测教训：值导入时 t0→t3 从 316ms 涨到 1089ms。真正的 AgentBridge
 // 在引擎就绪后才动态 import——那时纸早已可写。
+// `@sepia/agent/tasks` 是为此单开的纯任务层子入口（不碰 SDK、不碰网络），值导入无害。
 import type { AgentBridge, EngineEvent } from '@sepia/agent'
+import { TASKS, type TaskDefinition } from '@sepia/agent/tasks'
 import {
   asBookDirectory,
   ENGINE_INITIAL,
   engineReduce,
   parseModel,
   type AppConfig,
+  type BookDirectory,
   type EngineMachineState,
   type EngineStatus,
 } from '@sepia/core'
@@ -28,10 +32,13 @@ import {
 import type { Credentials } from './credentials.ts'
 import { engineIsolationEnv, type SepiaPaths } from './paths.ts'
 import { getTimeline } from './perf.ts'
+import { loadSession } from './session-state.ts'
 
 const SIDECAR_READY_TIMEOUT_MS = 60_000
 const SIDECAR_STOP_TIMEOUT_MS = 6_000
 const STREAM_RETRY_MS = 1_000
+/** 等流连上的上限。等不到就放行——⌘K 不许卡在这里（不变量 1）。 */
+const STREAM_OPEN_TIMEOUT_MS = 3_000
 
 interface SupervisorState {
   machine: EngineMachineState
@@ -139,6 +146,25 @@ function engineConfigContent(credentials: Credentials | null): string {
     provider[id] = { ...existing, options }
   }
   const model = parseModel(state.config?.model ?? null)
+  // 任务注册表 → 引擎侧 agent（§4.3c 四元组的引擎化身，a4 缺陷 A 的根修）：
+  // 名字即任务类型，prompt 用注册表里的常量（纪律 21——它因此天然是常量），
+  // 权限全 deny——deny 掉 `skill` 还顺带把技能表从 system prompt 里摘掉。
+  // **不用 `steps: 1` 兜底单发**：引擎在最后一步会注入「已达步数上限，请总结」
+  // 的提示词，那段话会被模型当成要输出的内容——工具全 deny 后本来就只有一发。
+  const agents = Object.fromEntries(
+    // `as const` 的注册表把 model 收窄成 `null` 字面量；这里要按接口宽型来分支
+    (Object.entries(TASKS) as Array<[string, TaskDefinition]>).map(([type, definition]) => [
+      type,
+      {
+        mode: 'primary',
+        prompt: definition.systemPrompt,
+        permission: { '*': 'deny' },
+        ...(definition.model === null
+          ? {}
+          : { model: `${definition.model.providerID}/${definition.model.modelID}` }),
+      },
+    ]),
+  )
   return JSON.stringify({
     ...(model === null ? {} : { model: `${model.providerID}/${model.modelID}` }),
     permission: { edit: 'deny', bash: 'deny', webfetch: 'deny', doom_loop: 'deny', external_directory: 'deny' },
@@ -146,6 +172,9 @@ function engineConfigContent(credentials: Credentials | null): string {
     share: 'disabled',
     autoupdate: false,
     snapshot: false,
+    agent: agents,
+    // 双保险的另一半：就算某次 send 忘带 agent，缺省也落在注册表内，不落回 build。
+    default_agent: 'rewrite' satisfies keyof typeof TASKS,
     ...(Object.keys(provider).length > 0 ? { provider } : {}),
   })
 }
@@ -197,12 +226,20 @@ async function fork(): Promise<void> {
   let child: UtilityProcess
   try {
     state.port = await freePort()
-    state.password = randomBytes(24).toString('hex')
+    // smoke 注入口：隔离 smoke 要用已知凭据直接查引擎（如 /skill 探针断言）。
+    // 只取这一个 key、不打印值（纪律 18）；未注入时照旧每次随机。
+    state.password = process.env['SEPIA_ENGINE_PASSWORD'] ?? randomBytes(24).toString('hex')
     const timeline = getTimeline()
     diag({ event: 'fork', at: Math.round(performance.now()), t3: Math.round(timeline.t3 ?? -1) })
+    // cwd 也要进隔离根（a4 实测）：/event 等不带 directory 的请求，引擎按**进程 cwd**
+    // 兜底 bootstrap 一个 instance——不指定的话那就是 Sepia 的启动目录（dev 下是仓库），
+    // 引擎的目光就越出了沙箱。目录得先在：fork 到不存在的 cwd 直接 spawn 失败。
+    const cwd = join(paths.engineHome, 'home')
+    await mkdir(cwd, { recursive: true })
     child = utilityProcess.fork(join(__dirname, 'sidecar.js'), [], {
       stdio: 'pipe',
       serviceName: 'sepia-engine',
+      cwd,
       env: engineEnv(paths, state.credentials),
     })
   } catch (error) {
@@ -263,26 +300,50 @@ async function onReady(generation: number, importMs: number, listenMs: number): 
     listenMs,
     spawnToReadyMs: Math.round(performance.now() - state.startedAt),
   })
-  void streamLoop(generation)
-  void prewarmSessions(generation)
+  void (async () => {
+    // 流与预热**绑同一个 book 目录**——引擎按 directory 分实例，两者分家就等于
+    // 在一个实例上开 session、在另一个实例上听事件（a4 实测正是这么哑掉的）。
+    const directory = await sessionBookDirectory()
+    if (directory === null) return
+    if (state.generation !== generation) return
+    await ensureStream(directory)
+    await prewarmSessions(generation, directory)
+  })()
+}
+
+/**
+ * 上次那个 page 所在的 book 目录。冷启动没有上次 page 就返回 null——
+ * 那时不预热、也不预订流，等 renderer 带着真目录来（⌘K 那一步必然会带）。
+ */
+async function sessionBookDirectory(): Promise<BookDirectory | null> {
+  if (state.paths === null) return null
+  const session = await loadSession(state.paths)
+  if (!session.page) return null
+  return asBookDirectory(dirname(session.page))
 }
 
 /**
  * session 预热（T-32 / 架构 §4.3b 条目 2）：引擎就绪时先建好空 session，
  * 把建 session 的那一次往返**从 ⌘K 的关键路径上摘掉**。
  *
+ * **预热必须绑 book 目录**（a4 缺陷 A 的根修）：引擎侧 session 在创建时就
+ * 绑死了 directory，prompt 的 query 改不了它。此前预热在 `~/.sepia` 上开
+ * session，⌘K 拿去用，整轮 markup 就跑在 `~/.sepia` 而不是 book 里——
+ * 日志铁证：`created directory=/Users/wp/.sepia` + prompt 时
+ * `booting location services directory=/Users/wp/.sepia`。
+ * book 目录从 session.json 的上次 page 推出；冷启动没有上次 page 就不预热
+ * （预热是优化不是功能，宁可少预热，不可预热错目录）。
+ *
  * 池大小是配置项（`sessionPrewarm`，MVP 取 1）。预热失败一声不响——
- * 它是优化不是功能，失败的代价只是慢一点，不该让引擎显得没就绪（不变量 1）。
+ * 失败的代价只是慢一点，不该让引擎显得没就绪（不变量 1）。
  */
-async function prewarmSessions(generation: number): Promise<void> {
+async function prewarmSessions(generation: number, directory: BookDirectory): Promise<void> {
   const size = state.config?.sessionPrewarm ?? 0
-  const directory = state.paths === null ? null : asBookDirectory(state.paths.home)
-  if (directory === null) return
   for (let i = 0; i < size; i++) {
     if (state.generation !== generation || state.bridge === null) return
     try {
       const thread = await state.bridge.openThread({ directory })
-      warmThreads.push(thread.id)
+      warmThreads.push({ id: thread.id, directory })
     } catch {
       return
     }
@@ -290,27 +351,71 @@ async function prewarmSessions(generation: number): Promise<void> {
   diag({ event: 'prewarm', count: warmThreads.length })
 }
 
-/** 预热好的空 session。⌘K 优先取用，取空了就现开一个。 */
-const warmThreads: string[] = []
+/** 预热好的空 session，**连同它绑死的目录**。⌘K 优先取用，取空了就现开一个。 */
+const warmThreads: Array<{ id: string; directory: BookDirectory }> = []
 
-export function takeWarmThread(): string | null {
-  return warmThreads.shift() ?? null
+/**
+ * 只交出目录相符的预热 session——不相符的宁可不用（现开一个的代价是一次往返，
+ * 用错目录的代价是整轮 markup 跑错工作区，a4 实测就是这么跑到 `~/.sepia` 去的）。
+ */
+export function takeWarmThread(directory: BookDirectory): string | null {
+  const index = warmThreads.findIndex((thread) => thread.directory === directory)
+  if (index === -1) return null
+  const [taken] = warmThreads.splice(index, 1)
+  return taken?.id ?? null
+}
+
+/**
+ * 当前订着的那条流。**流是绑 book 目录的**（a4 实测的第三个缺陷）：`/event`
+ * 按 directory 找引擎实例，缺了回落到 `process.cwd()`——流订在 cwd 实例、
+ * session 活在 book 实例，两边各说各话，renderer 整轮只收得到心跳。
+ */
+let streamState: { directory: BookDirectory; abort: AbortController } | null = null
+
+/**
+ * 保证「订在 `directory` 上的那条流」正在跑，并**等到它真的连上**才返回。
+ *
+ * 等连上这件事不是洁癖：引擎快起来只要 3s 出头跑完一整轮，流晚一步订上，
+ * 那一轮的事件就全落在订阅之前。等不到也不硬等——超时照样放行，
+ * 宁可少收几条事件，不可把 ⌘K 卡在这里（不变量 1：Agent 可以缺席）。
+ */
+export async function ensureStream(directory: BookDirectory): Promise<void> {
+  if (streamState !== null && streamState.directory === directory) return
+  streamState?.abort.abort()
+  const abort = new AbortController()
+  streamState = { directory, abort }
+  let openGate: (() => void) | null = null
+  const connected = new Promise<void>((resolve) => {
+    openGate = resolve
+  })
+  void streamLoop(state.generation, directory, abort.signal, () => openGate?.())
+  await Promise.race([connected, new Promise((resolve) => setTimeout(resolve, STREAM_OPEN_TIMEOUT_MS))])
 }
 
 /** 事件流常开：断了就重连（引擎还在的前提下）。事件扇出给 ipc 层。 */
-async function streamLoop(generation: number): Promise<void> {
+async function streamLoop(
+  generation: number,
+  directory: BookDirectory,
+  signal: AbortSignal,
+  onOpen: () => void,
+): Promise<void> {
   for (;;) {
+    if (signal.aborted) return
     if (state.generation !== generation || state.bridge === null || state.machine.status !== 'ready') return
     try {
       await state.bridge.stream({
+        directory,
+        signal,
+        onOpen,
         onEvent: (event) => {
-          if (state.generation !== generation) return
+          if (state.generation !== generation || signal.aborted) return
           for (const listener of eventListeners) listener(event)
         },
       })
     } catch {
       // 连接断了。引擎进程死没死由 exit 事件裁——这里只管过一会儿重试
     }
+    if (signal.aborted) return
     await new Promise((resolve) => setTimeout(resolve, STREAM_RETRY_MS))
   }
 }
@@ -318,6 +423,10 @@ async function streamLoop(generation: number): Promise<void> {
 function handleExit(uptimeMs: number): void {
   state.child = null
   state.bridge = null
+  // 流跟着引擎一起死：不清掉的话，重启后 ensureStream 看见「目录没变」就直接返回，
+  // 于是新引擎上再没人订流——一条事件都不会再来。
+  streamState?.abort.abort()
+  streamState = null
   if (state.stopping) return
 
   const { state: next, decision } = engineReduce(state.machine, { type: 'exit', uptimeMs })

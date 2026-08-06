@@ -77,12 +77,35 @@ export class MathWidget extends SourceWidget {
   }
 }
 
+/**
+ * C 类 widget **内部**的行内渲染器（150 §1.9 回流）。
+ *
+ * 类型定义在这里、实现在 `inline-dom.ts`，是被依赖方向逼出来的：实现要用
+ * `buildDecorations`（在 decorate.ts），而 decorate.ts 要用本文件的 widget 类——
+ * 实现若也住这儿就成环（结构 2 的 no-circular）。于是本文件只认这个**结构类型**，
+ * 实现经 Facet 从总装层注入。
+ */
+export type InlineRenderer = (text: string) => DocumentFragment
+
 function parseTableRow(line: string): string[] {
   const cells = line.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split(/(?<!\\)\|/)
   return cells.map((cell) => cell.trim().replace(/\\\|/g, '|'))
 }
 
 export class TableWidget extends SourceWidget {
+  constructor(
+    source: string,
+    /** 注入的行内渲染器。null = 退回 raw 文本（行内不渲染是缺憾，纸面出错才是事故）。 */
+    readonly renderInline: InlineRenderer | null = null,
+  ) {
+    super(source)
+  }
+
+  override eq(other: TableWidget): boolean {
+    // 渲染器换了人，画出来的东西就不一样——必须进判等，否则换了也不重建
+    return super.eq(other) && other.renderInline === this.renderInline
+  }
+
   override toDOM(): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'sepia-table'
@@ -105,9 +128,14 @@ export class TableWidget extends SourceWidget {
       const tr = document.createElement('tr')
       parseTableRow(line).forEach((cell, i) => {
         const el = document.createElement(tag)
-        // textContent 而不是 innerHTML：单元格内不渲染 HTML——D 类"任意 HTML 不渲染"
-        // 的安全判断（架构 §4.4）在 widget 内同样成立。
-        el.textContent = cell
+        // 单元格内的**行内** markdown 复用 A 类装饰管线（150 §1.9 回流；走查暴露的
+        // 缺陷：网格画了、单元格里 `code` 露反引号、**bold** 露星号）。
+        //
+        // **仍然绝不 innerHTML**：渲染器交出来的是 DOM 节点，不是 HTML 字符串——
+        // D 类「任意 HTML 不渲染」的安全判断（架构 §4.4）在 widget 内同样成立，
+        // 单元格里的 `<script>` 依旧只会是六个字符。
+        if (this.renderInline === null) el.textContent = cell
+        else el.appendChild(this.renderInline(cell))
         const align = aligns[i]
         if (align) el.style.textAlign = align
         tr.append(el)

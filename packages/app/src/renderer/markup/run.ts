@@ -1,4 +1,4 @@
-import { assembleContext, toUserMessage, type ContextBlock } from '@sepia/agent/tasks'
+import { assembleContext, toUserMessage, type ContextBlock, type TaskType } from '@sepia/agent/tasks'
 import { createMarkupRun, type MarkupRun, type MarkupTimeline } from '@sepia/core'
 
 import { agent, type AgentEvent } from '../services/agent-bridge.ts'
@@ -45,14 +45,19 @@ export interface MarkupHandle {
   run: Pick<MarkupRun, 'mark' | 'timeline'>
 }
 
+/** 事件里的 part（形状随事件而异，取不到就是 null）。 */
+function partOf(event: AgentEvent): Record<string, unknown> | null {
+  const part = event.properties?.['part']
+  return typeof part === 'object' && part !== null ? (part as Record<string, unknown>) : null
+}
+
 /** 从引擎事件里抠出文本增量。协议规则 4：认不出的事件一律忽略，不炸流。 */
 function textOf(event: AgentEvent): string | null {
   const properties = event.properties
   if (properties === undefined) return null
-  const part = properties['part']
-  if (typeof part === 'object' && part !== null) {
-    const record = part as Record<string, unknown>
-    if (record['type'] === 'text' && typeof record['text'] === 'string') return record['text']
+  const part = partOf(event)
+  if (part !== null) {
+    if (part['type'] === 'text' && typeof part['text'] === 'string') return part['text']
   }
   if (typeof properties['text'] === 'string') return properties['text']
   return null
@@ -101,13 +106,35 @@ export function startMarkup(
     request.instruction,
   )
 
+  // markup 链路 = 注册表的 rewrite 任务（MVP 唯一一条）。agent 名即任务类型——
+  // 不带它，引擎会落到默认 build agent（完整 coding persona + 技能表 + agentic loop），
+  // a4 真引擎实测就是这么翻的车。
+  const TASK: TaskType = 'rewrite'
+
   const send = async (thread: string, message: string): Promise<void> => {
     run.mark('m1')
     const sent = await agent.send(thread, [{ type: 'text', text: message }], {
       directory: request.directory,
+      agent: TASK,
       ...(request.model === undefined ? {} : { model: request.model }),
     })
     if (!sent.ok) finish('failed', sent.reason)
+  }
+
+  // 引擎会把**我们刚发出去的那条用户消息原样回播一遍**（`message.part.updated`，
+  // `type=text`）——它是回声，不是生成结果。a4 真引擎实测的代价：模型一次都没答上来时
+  // （比如凭据解不开），这条回声就成了"结果"，diff 里显示的是整段 prompt，
+  // **落笔会把 prompt 写进正文**。两道闸，任缺一道都还会漏：
+  //   ① 文本与发出去的那条**逐字相同** → 是回声。助手要撞上得把整段 prompt 一字不差复读。
+  //   ② 助手那条消息由 `step-start` 开场；记下它的 messageID，此后只认这条消息的文本。
+  // ②对桩无效（桩不发 step-start，也没有 messageID）——所以①不能省；
+  // ①对"回声被截断成前缀"无效——所以②不能省。
+  let assistantMessage: string | null = null
+  const isEcho = (event: AgentEvent, text: string): boolean => {
+    if (text === userMessage) return true
+    const part = partOf(event)
+    const id = part?.['messageID']
+    return assistantMessage !== null && typeof id === 'string' && id !== assistantMessage
   }
 
   void (async () => {
@@ -115,14 +142,24 @@ export function startMarkup(
       if (stopped) return
       // m2：首字节。**任何**一条事件都算——心跳也算，它证明连接是活的。
       run.mark('m2')
+      const part = partOf(event)
+      if (part?.['type'] === 'step-start' && typeof part['messageID'] === 'string') {
+        assistantMessage = part['messageID']
+      }
       const text = textOf(event)
-      if (text !== null && text !== '') {
+      if (text !== null && text !== '' && !isEcho(event, text)) {
         run.mark('m3')
         phase = 'streaming'
         received = text
         emit()
       }
-      if (event.type === 'message.completed' || event.type === 'session.idle') finish('done')
+      if (event.type === 'message.completed' || event.type === 'session.idle') {
+        // **一个字都没收到，就不是"完成"**：模型没答上来（凭据坏了、provider 不通）时，
+        // 引擎照样会把流收干净。判成 done 的话浮层会带着空结果进 result 阶段，
+        // 而 result 阶段是有落笔按钮的——于是一次没有结果的生成，能把空串写进正文。
+        // 判成 failed，浮层停在生成中并显示失败行，**落笔按钮根本不存在**。
+        finish(received === '' ? 'failed' : 'done')
+      }
     })
 
     const opened = await agent.openThread(request.directory)
@@ -131,7 +168,10 @@ export function startMarkup(
       return
     }
     threadId = opened.value.id
-    await agent.stream()
+    // 订流**必须带本轮的 book 目录**，且必须等它连上再 send（a4 实测）：
+    // 引擎按 directory 分实例，订错实例收不到任何 message 事件；订晚了则整轮
+    // 事件都落在订阅之前——两种情况浮层都会一直停在 generating。
+    await agent.stream(request.directory)
     await send(threadId, userMessage)
   })()
 

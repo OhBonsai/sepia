@@ -24,6 +24,7 @@ const ENGINE_READY_TIMEOUT_MS = 45_000
 interface EngineDiag {
   event: string
   pid?: number
+  port?: number
   status?: string
   restarts?: number
   at?: number
@@ -39,7 +40,7 @@ interface Harness {
   stdout: () => string
 }
 
-async function launch(): Promise<Harness> {
+async function launch(extraEnv: Record<string, string> = {}): Promise<Harness> {
   const home = await mkdtemp(join(tmpdir(), 'sepia-engine-smoke-'))
   const page = join(home, 'page.md')
   await writeFile(page, PAGE_BODY, 'utf8')
@@ -52,7 +53,7 @@ async function launch(): Promise<Harness> {
 
   const app = await electron.launch({
     args: LAUNCH_ARGS,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home, ...extraEnv },
   })
 
   let stdout = ''
@@ -135,9 +136,15 @@ test('kill -9 引擎后纸仍全功能可写，且出现缺席提示线', async 
 })
 
 test('引擎全部路径落在 ~/.sepia/engine 下，隔离目录里没有凭据文件', async () => {
-  const harness = await launch()
+  // 已知凭据注入口：本条要以 HTTP 直接查引擎（探针断言），随机密码拿不到。
+  const PASSWORD = 'sepia-smoke-isolation'
+  const harness = await launch({ SEPIA_ENGINE_PASSWORD: PASSWORD })
   await (await harness.app.firstWindow()).waitForSelector('.cm-content')
-  await waitFor(() => harness.diag.find((it) => it.event === 'ready'), ENGINE_READY_TIMEOUT_MS, '引擎就绪')
+  const ready = await waitFor(
+    () => harness.diag.find((it) => it.event === 'ready'),
+    ENGINE_READY_TIMEOUT_MS,
+    '引擎就绪',
+  )
 
   const engineHome = join(harness.home, '.sepia', 'engine')
   const { readdirSync, existsSync } = await import('node:fs')
@@ -172,6 +179,33 @@ test('引擎全部路径落在 ~/.sepia/engine 下，隔离目录里没有凭据
   }
   walk(engineHome)
   expect(found, '凭据只许以密文住在 ~/.sepia/credentials.json，引擎侧零落盘').toEqual([])
+
+  // 判据四：**引擎不读 XDG 之外的用户目录**（a4 真引擎实测补的账）。
+  // 环境变量重定向只管走 `$HOME` 的路；skill 发现还有一条**从 book 目录向上走到根**
+  // 的路（引擎对非 git 目录把 worktree 判成 `/`），实测正是它读到了 `~/.claude/skills`。
+  // 手法：往假 HOME 里种一个 `~/.claude/skills/__probe__`，直接查引擎的 skill 清单，
+  // 断言探针不在。skill 发现是惰性的——清单这一查本身就是触发器，断言不会空转；
+  // built-in 技能必在则证明清单真的取到了（防「接口 404 也算过」）。
+  await mkdir(join(harness.home, '.claude', 'skills', '__probe__'), { recursive: true })
+  await writeFile(
+    join(harness.home, '.claude', 'skills', '__probe__', 'SKILL.md'),
+    '---\nname: __probe__\ndescription: 隔离探针——引擎若读得到它，隔离就是破的\n---\n探针正文。\n',
+    'utf8',
+  )
+  const response = await fetch(
+    `http://127.0.0.1:${ready.port}/skill?directory=${encodeURIComponent(harness.home)}`,
+    { headers: { authorization: `Basic ${Buffer.from(`sepia:${PASSWORD}`).toString('base64')}` } },
+  )
+  expect(response.ok, `GET /skill 应当可用（HTTP ${response.status}）`).toBe(true)
+  const skills = (await response.json()) as Array<{ name: string; location: string }>
+  expect(
+    skills.some((skill) => skill.name === '__probe__' || skill.location.includes('.claude')),
+    '引擎读到了 ~/.claude —— 非 XDG 扫描路径（skill 向上发现）逃出了隔离',
+  ).toBe(false)
+  expect(
+    skills.some((skill) => skill.location === '<built-in>'),
+    'skill 清单里连 built-in 都没有——说明清单压根没取到，上一条断言在空转',
+  ).toBe(true)
 
   await harness.app.close()
 })

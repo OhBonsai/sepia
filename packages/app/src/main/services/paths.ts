@@ -42,6 +42,18 @@ export function sepiaPaths(userHome: string): SepiaPaths {
  * 住在这里而不是 supervisor 里，是纪律 20 重述的直接后果——这几个名字**指向哪**
  * 才是纪律关心的事，而"指向 Sepia 自有根"只有在派生它们的地方才看得出来。
  * 放在调用点，检查就只能看见四个 XDG 字面量，然后逼出四条"这其实是合规"的豁免。
+ *
+ * **重定向管不住向上扫描**（a4 真引擎实测，Stage 3 补账）：引擎对非 git 目录把
+ * worktree 判成 `/`，skill / 工程级配置 / AGENTS.md 的发现全部**从 book 目录一路
+ * 向上走到根**——途经真实的 `~/`，`~/.claude/skills`、`~/.agents/skills` 就这样
+ * 被读了进来（日志证据：duplicate skill dws 同时命中两处）。这条路不经 `$HOME`，
+ * 环境变量重定向拦不到，只能用引擎自己的三个禁用开关整条关掉：
+ *   · EXTERNAL_SKILLS —— `.claude`/`.agents` 技能扫描（全局 + 向上两条都关）
+ *   · CLAUDE_CODE —— `CLAUDE.md` 注入 system prompt（同为 claude 兼容面）
+ *   · PROJECT_CONFIG —— 工程级 opencode.json(c) / `.opencode/` / AGENTS.md 向上发现；
+ *     不关它，book 或其任一祖先目录里的 opencode 配置能**覆盖**注入的 deny（工程级
+ *     在合并序里晚于全局）
+ * 架构 §4.1 的措辞是「与用户 opencode 配置完全无关」——这三个开关是它的另一半。
  */
 export function engineIsolationEnv(paths: SepiaPaths): Record<string, string> {
   const root = paths.engineHome
@@ -51,5 +63,8 @@ export function engineIsolationEnv(paths: SepiaPaths): Record<string, string> {
     XDG_DATA_HOME: join(root, 'data'),
     XDG_STATE_HOME: join(root, 'state'),
     XDG_CACHE_HOME: join(root, 'cache'),
+    OPENCODE_DISABLE_EXTERNAL_SKILLS: '1',
+    OPENCODE_DISABLE_CLAUDE_CODE: '1',
+    OPENCODE_DISABLE_PROJECT_CONFIG: '1',
   }
 }

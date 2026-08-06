@@ -9,10 +9,11 @@ import { languages } from '@codemirror/language-data'
 import type { Extension } from '@codemirror/state'
 
 import { clipboardExtension } from './extensions/clipboard.ts'
-import { assetBase, decoratePlugin } from './extensions/decorate.ts'
+import { assetBase, decoratePlugin, inlineRenderer } from './extensions/decorate.ts'
 import { sepiaHighlight } from './extensions/highlight.ts'
 import { mathSyntax } from './extensions/math-syntax.ts'
 import { searchApi, searchExtension } from './extensions/search.ts'
+import { renderInline } from './widgets/inline-dom.ts'
 
 export { searchApi }
 
@@ -37,6 +38,9 @@ export function markdownExtensions(options: MarkdownOptions = {}): Extension[] {
     }),
     syntaxHighlighting(sepiaHighlight),
     assetBase.of(options.assetBase ?? null),
+    // C 类 widget 内部的行内渲染器（150 §1.9 回流）。注入点在总装层，是依赖方向
+    // 逼出来的——见 decorate.ts 上 `inlineRenderer` 的说明。
+    inlineRenderer.of(renderInline),
     decoratePlugin(),
     clipboardExtension(),
     searchExtension(),

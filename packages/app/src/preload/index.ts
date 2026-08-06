@@ -66,7 +66,7 @@ const api = {
     openThread: (directory: string) => ipcRenderer.invoke('agent/open-thread', directory),
     send: (threadId: string, parts: unknown[], options: unknown) =>
       ipcRenderer.invoke('agent/send', threadId, parts, options),
-    stream: () => ipcRenderer.invoke('agent/stream'),
+    stream: (directory: string) => ipcRenderer.invoke('agent/stream', directory),
     interrupt: (threadId: string, directory: string) => ipcRenderer.invoke('agent/interrupt', threadId, directory),
     listModels: () => ipcRenderer.invoke('agent/list-models'),
     status: () => ipcRenderer.invoke('agent/status'),

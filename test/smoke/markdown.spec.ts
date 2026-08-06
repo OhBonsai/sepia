@@ -100,6 +100,65 @@ test('④ 全语法渲染：A/B/C/D 每类可判定的 DOM 特征', async () => 
   await app.close()
 })
 
+// 走查暴露的 C 类缺陷（150 §1.9 回流）：表格画出了网格，单元格里的行内 markdown
+// 却是 raw——`代码` 露反引号、**粗** 露星号。修法是复用 A 类装饰管线（不自写第二套）。
+//
+// 预定破坏：把 `TableWidget.toDOM` 的 `this.renderInline(cell)` 换回
+// `el.textContent = cell`（或把 markdown.ts 里的 `inlineRenderer.of(...)` 摘掉）
+// → 反引号/星号回到 DOM 文本里，`code`/`strong` 节点消失，本条必红。
+test('④b C 类 widget 内的行内标记：表格单元格复用 A 类管线渲染', async () => {
+  const doc = [
+    '| 甲 | 乙 |',
+    '| - | - |',
+    '| `x` | **y** |',
+    // 边界：单元格内**只做行内**。GFM 规定单元格里没有块级，所以这三个必须逐字呈现——
+    // 裸解析（不套回表格）会把它们当成标题/引用/列表，井号大于号被藏、圆点 widget 被塞进来
+    '| # 井 | - 列 |',
+    '| > 引 | <script>x</script> |',
+    '',
+    '尾段。',
+    '',
+  ].join('\n')
+  // 光标停在尾段——表格必须处于**失焦渲染**态，widget 才在
+  const { app, win } = await boot(doc, { cursor: doc.length - 2 })
+  const probe = await win.evaluate(() => {
+    const table = document.querySelector('.sepia-table table')
+    const text = table?.textContent ?? ''
+    return {
+      有表格: table !== null,
+      code节点: table?.querySelectorAll('td code.cm-md-code').length ?? 0,
+      strong节点: table?.querySelectorAll('td strong.cm-md-strong').length ?? 0,
+      文本: text,
+      // 语义节点里装的必须是**去掉标记之后**的内容
+      code内容: table?.querySelector('td code')?.textContent ?? '',
+      strong内容: table?.querySelector('td strong')?.textContent ?? '',
+      单元格: [...(table?.querySelectorAll('td') ?? [])].map((td) => td.textContent),
+      圆点: table?.querySelectorAll('.sepia-bullet').length ?? 0,
+      脚本节点: table?.querySelectorAll('script').length ?? 0,
+    }
+  })
+  expect(probe.有表格).toBe(true)
+  // 一：对应的语义节点出现了，且带着与纸面同名的 class（同一份色板）
+  expect(probe.code节点).toBe(1)
+  expect(probe.strong节点).toBe(1)
+  expect(probe.code内容).toBe('x')
+  expect(probe.strong内容).toBe('y')
+  // 二：字面标记不出现在渲染结果里——这一条才是走查看见的那个现象
+  expect(probe.文本).not.toContain('`')
+  expect(probe.文本).not.toContain('**')
+  // 三：块级不递归（人裁的边界）——单元格里的 #、>、- 一律逐字，不当块级解释。
+  // 破坏方式：把 inline-dom.ts 的合成表格外壳去掉、改成裸解析 → 井号大于号被藏、
+  // 圆点 widget 出现，这三条必红。
+  expect(probe.单元格).toEqual(['x', 'y', '# 井', '- 列', '> 引', '<script>x</script>'])
+  expect(probe.圆点).toBe(0)
+  // 四：D 类「任意 HTML 不渲染」在 widget 内同样成立——渲染器交出的是 DOM 节点，
+  // 不是 HTML 字符串，所以 <script> 只可能是六个字符
+  expect(probe.脚本节点).toBe(0)
+  // 本条是 Stage 4 走查暴露的缺陷，证据跟着 150 走（不是 130 的那批）
+  await win.screenshot({ path: 'specs/plan/evidence/150/table-inline.png', fullPage: false })
+  await app.close()
+})
+
 test('⑤ 揭示行为：光标进入标记露出、离开再隐藏', async () => {
   const { app, win } = await boot('前面 **加粗** 后面\n')
   const marks = (): Promise<boolean> =>

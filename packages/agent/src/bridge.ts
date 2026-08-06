@@ -8,6 +8,7 @@ import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk'
 import type { BookDirectory } from '@sepia/core'
 
 import { SseParser, type EngineEvent } from './sse.ts'
+import type { TaskType } from './tasks/index.ts'
 
 export interface AgentBridgeOptions {
   /** 引擎地址，形如 `http://127.0.0.1:<port>`。 */
@@ -33,6 +34,12 @@ export interface SendOptions {
   directory: BookDirectory
   /** 模型指定。缺省用引擎侧默认。 */
   model?: { providerID: string; modelID: string }
+  /**
+   * 引擎侧 agent 指定，名字即任务类型（注册表 §4.3c 的四元组在引擎侧的化身）。
+   * a4 真引擎实测：不指定就落到引擎默认的 build agent——完整 coding persona、
+   * 技能表、agentic loop 全套。类型收成 `TaskType`，防止手滑传出注册表外的名字。
+   */
+  agent?: TaskType
 }
 
 export interface ThreadRef {
@@ -47,7 +54,21 @@ export interface ModelInfo {
 }
 
 export interface StreamOptions {
+  /**
+   * 纪律 10 的第五格（a4 真引擎实测补的账）：`/event` **是实例级的**，引擎按
+   * `directory` 找实例，缺了就回落到 `process.cwd()`（vendor 的
+   * `workspace-routing.ts:87`）。流订在 cwd 实例、session 活在 book 实例时，
+   * 两边各说各话——renderer 整轮只收得到 `server.heartbeat`，浮层停在 generating。
+   * 五方法里当初只有它漏了类型化 directory，也就只有它翻了车。
+   */
+  directory: BookDirectory
   signal?: AbortSignal
+  /**
+   * 连接建立（响应头到手、还没读第一个字节）时回调一次。
+   * **send 必须等它**：a4 实测里引擎 3.2s 就跑完了一整轮，流要是晚一步订上，
+   * 那一轮的事件就全落在订阅之前——什么都收不到，和没连一样。
+   */
+  onOpen?: () => void
   /** 每条事件回调一次；协议合并规则见 sse.ts 的 reduceThreadView。 */
   onEvent: (event: EngineEvent) => void
 }
@@ -90,6 +111,7 @@ export class AgentBridge {
       body: {
         parts,
         ...(options.model === undefined ? {} : { model: options.model }),
+        ...(options.agent === undefined ? {} : { agent: options.agent }),
       },
       throwOnError: true,
     })
@@ -102,6 +124,7 @@ export class AgentBridge {
    */
   async stream(options: StreamOptions): Promise<void> {
     const url = new URL(`${this.baseUrl}/event`)
+    url.searchParams.set('directory', options.directory)
     const request = new Request(url, {
       headers: { authorization: this.authorization, accept: 'text/event-stream' },
       signal: options.signal ?? null,
@@ -110,6 +133,7 @@ export class AgentBridge {
     if (!response.ok || response.body === null) {
       throw new Error(`engine event stream failed: ${response.status}`)
     }
+    options.onOpen?.()
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     const parser = new SseParser()

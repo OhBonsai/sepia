@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 
 import type { TextPartInput } from '@sepia/agent'
+import { TASKS, type TaskType } from '@sepia/agent/tasks'
 import { asBookDirectory, type BookDirectory, type IoResult, type PerfMark, type SessionState } from '@sepia/core'
 
 import { loadSession, saveSession } from '../services/session-state.ts'
@@ -24,6 +25,11 @@ function directoryOf(value: unknown): BookDirectory | null {
   } catch {
     return null
   }
+}
+
+/** agent 名只认任务注册表里的（引擎侧同名 agent 由 engineConfigContent 注入）。 */
+function taskOf(value: unknown): TaskType | null {
+  return typeof value === 'string' && Object.hasOwn(TASKS, value) ? (value as TaskType) : null
 }
 
 export function registerIpc(paths: SepiaPaths): void {
@@ -79,8 +85,8 @@ export function registerIpc(paths: SepiaPaths): void {
     if (bridge === null) return absent
     if (book === null) return { ok: false, reason: 'directory must be absolute' }
     // 预热池里有就直接拿（T-32）——这一步省下的正是 ⌘K 关键路径上的一次往返。
-    // 池空了就现开一个：预热是优化，不是前置条件。
-    const warm = supervisor.takeWarmThread()
+    // 池空了、或预热的目录与本次 book 不符，就现开一个：预热是优化，不是前置条件。
+    const warm = supervisor.takeWarmThread(book)
     if (warm !== null) return { ok: true, value: { id: warm } }
     try {
       return { ok: true, value: await bridge.openThread({ directory: book }) }
@@ -97,8 +103,10 @@ export function registerIpc(paths: SepiaPaths): void {
       const opts = (typeof options === 'object' && options !== null ? options : {}) as {
         directory?: unknown
         model?: { providerID: string; modelID: string }
+        agent?: unknown
       }
       const book = directoryOf(opts.directory)
+      const task = taskOf(opts.agent)
       if (typeof threadId !== 'string' || book === null) return { ok: false, reason: 'bad request' }
       if (!Array.isArray(parts) || parts.some((it) => it?.type !== 'text' || typeof it?.text !== 'string')) {
         return { ok: false, reason: 'parts must be text parts' }
@@ -107,6 +115,7 @@ export function registerIpc(paths: SepiaPaths): void {
         await bridge.send(threadId, parts as TextPartInput[], {
           directory: book,
           ...(opts.model === undefined ? {} : { model: opts.model }),
+          ...(task === null ? {} : { agent: task }),
         })
         return { ok: true, value: undefined }
       } catch (error) {
@@ -116,8 +125,15 @@ export function registerIpc(paths: SepiaPaths): void {
   )
 
   // 事件流常开在 supervisor 里（就绪即订阅）；这条是显式的「确保在流」握手。
-  ipcMain.handle('agent/stream', async (): Promise<IoResult<void>> => {
-    return supervisor.engineBridge() === null ? absent : { ok: true, value: undefined }
+  // 流绑 book 目录（a4 实测）：`/event` 按 directory 找引擎实例，不带就回落到
+  // 进程 cwd 那个实例——session 在 book 实例里跑，事件却从 cwd 实例出，永远对不上。
+  // 返回前等流真的连上，好让紧随其后的 send 不会抢在订阅之前。
+  ipcMain.handle('agent/stream', async (_event, directory: unknown): Promise<IoResult<void>> => {
+    const book = directoryOf(directory)
+    if (supervisor.engineBridge() === null) return absent
+    if (book === null) return { ok: false, reason: 'directory must be absolute' }
+    await supervisor.ensureStream(book)
+    return { ok: true, value: undefined }
   })
 
   ipcMain.handle('agent/interrupt', async (_event, threadId: unknown, directory: unknown): Promise<IoResult<void>> => {

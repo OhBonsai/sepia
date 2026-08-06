@@ -219,8 +219,8 @@ Stage 4 的类型层第四五条上来就要带 `.test-d.ts`，不能等反向�
 | a1 | 构建产物齐全可起 | build-engine → check:artifacts → spawn → 就绪 | ✓ `v1.18.13@a105350` → 5 个文件 34.7MB；`check:artifacts` 绿；最小 spawn 探针 fork→ready 2.27s（import 1.49s + listen 0.37s） |
 | a2 | kill -9 全链 | smoke#7 + 手工 kill 脚本 | ✓ smoke「kill -9 引擎后纸仍全功能可写」34.5s 通过：连杀 → 三次退避 → 缺席稳态 → 提示线出现 → 打字 → ⌘S → **文件里读得到那行字** |
 | a3 | 退避与缺席态 | 连崩 3 次 → 提示线 | ✓ 同 a2（提示线由 smoke 断言 `.sepia-agent-line` 可见，不是截图） |
-| a4 | 隔离与零落盘 | smoke#9 + 目录清单 | ✓ 四个 XDG 根派生的 `opencode/` 齐全；`engine/home` 无回落影子；隔离根外零文件；全树无 `auth|credential|token|.key` |
-| a5 | 五方法真对话 | 走 bridge 发真请求收流 | ✓ **真 key 真模型**（用户 `~/.config/opencode/opencode.json` 的 provider，仅内存注入、不落仓库）：listModels 18 个、openThread、send 204、stream 收到 `message.part.delta` 并拼出回答、interrupt 200。首 token 500ms，全程 7.3s |
+| a4 | 隔离与零落盘 | smoke#9 + 目录清单 | ✓ 四个 XDG 根派生的 `opencode/` 齐全；`engine/home` 无回落影子；隔离根外零文件；全树无 `auth|credential|token|.key`。**补账（2026-08-05，Stage 4 a4 实测暴露）**：只挡了走 `$HOME`/XDG 的路——skill/工程配置的向上扫描（非 git 目录 worktree=`/`）读到了真实 `~/.claude`、`~/.agents`。已修：fork env 增 `OPENCODE_DISABLE_{EXTERNAL_SKILLS,CLAUDE_CODE,PROJECT_CONFIG}` 三开关（paths.ts 派生）；smoke#9 增判据四（种 `~/.claude/skills/__probe__` → 查引擎 `/skill` 清单断言不出现，去掉开关实证必红） |
+| a5 | 五方法真对话 | 走 bridge 发真请求收流 | ✓ **真 key 真模型**（用户 `~/.config/opencode/opencode.json` 的 provider，仅内存注入、不落仓库）：listModels 18 个、openThread、send 204、stream 收到 `message.part.delta` 并拼出回答、interrupt 200。首 token 500ms，全程 7.3s。**补账（2026-08-05，Stage 4 a4 实测暴露）**：`stream` 是五方法里唯一没按纪律 10 带 `directory` 的一个——`/event` 实为**实例级**（引擎按 directory 找实例，缺了回落到 `process.cwd()`），a5 当时能收到流，只因探针与 session 恰好落在同一个默认实例上，**掩盖了缺陷**；真装到 app 里（session 绑 book 目录、cwd 另在别处）就再不匹配，renderer 整轮只收得到 `server.heartbeat`。已修：`StreamOptions.directory` 类型化必填 + `/event` 带 directory + 订流等连上再 send；bridge 单测补一条断言 `/event` 的 directory |
 | a6 | 冷启动对比 | 10 次 P50/P90 vs Stage 1 | **未做（人裁 2026-08-05：机器负载过高）**，见 §1.7 |
 | a7 | 单实例回归 | 二次启动开新窗口仍通 | ✓ 随 Stage 1 的 `write-save-reopen` smoke 一起绿（全量 `check` 的 test 步 + smoke 各跑过） |
 
@@ -368,6 +368,23 @@ DoD 三条判定：**kill -9 后纸全功能可写**（§1.5 smoke ⑤——连�
 重生成）、`140` 本文档（取 worktree 演进版）、`copy/index.ts` 与 `App.tsx`（Stage 2 查找 ×
 Stage 3 引擎状态，正交增量做并集，五处手工缝合）。`CLAUDE.md` / `bridge-snapshot.json`
 自动合并无冲突（后者 12+8=20 项，与不变量级子条白名单一致）。
+
+### 补注（2026-08-06，Stage 4 收尾回填）——**「隔离与零落盘」当时验的是个假的**
+
+a4 的真模型全链实测（150 §1.6a）证明：Stage 3 关闭时勾掉的「隔离与零落盘」**没有真正成立**，
+当时的证据只覆盖了走 `$HOME`/XDG 的那半条路。两处据实补注：
+
+1. **非 XDG 扫描路径没挡住**。引擎对非 git 目录把 worktree 判成 `/`，skill / 工程级配置的
+   发现**从 book 目录一路向上走到根**，途经真实的 `~/`——实测读到了 `~/.claude/skills` 与
+   `~/.agents/skills`（日志铁证：`duplicate skill name name=dws` 同时命中两处）。这条路
+   不经 `$HOME`，环境变量重定向拦不到。**当时的 smoke #9 只查了「目录树里有没有文件」，
+   没查「引擎读了谁」**，所以它绿得毫无察觉。已修：fork env 增三个
+   `OPENCODE_DISABLE_{EXTERNAL_SKILLS,CLAUDE_CODE,PROJECT_CONFIG}` 开关；smoke #9 补判据四
+   （种 `~/.claude/skills/__probe__` → 查引擎 `/skill` 清单断言不出现，摘掉开关实证必红）。
+2. **`stream` 漏了 directory**（同批补注，详见 §1.6a a5 行）。
+
+**这条补注本身就是教训**：一条检查「绿」只说明它查的那件事成立，不说明它命名的那件事成立。
+`a4` 的名字叫「隔离与零落盘」，查的却只是「零落盘」——名字比断言大一圈，差额就是假绿。
 
 ### 遗留债（下一 stage §1.1 逐条重问）
 

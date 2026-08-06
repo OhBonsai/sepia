@@ -49,17 +49,28 @@ describe('AgentBridge 五方法', () => {
     expect(calls[0]?.authorization).toBe(AUTH)
   })
 
-  it('send → POST /session/{id}/prompt_async，parts 与 model 原样入 body', async () => {
+  it('send → POST /session/{id}/prompt_async，parts / model / agent 原样入 body', async () => {
     const { bridge, calls } = mockBridge(() => Response.json({}))
     await bridge.send('s_1', [{ type: 'text', text: '改写这段' }], {
       directory: BOOK,
       model: { providerID: 'anthropic', modelID: 'claude-sonnet-5' },
+      agent: 'rewrite',
     })
     expect(calls[0]?.url.pathname).toBe('/session/s_1/prompt_async')
     expect(calls[0]?.url.searchParams.get('directory')).toBe('/tmp/book')
     const body = JSON.parse(String(calls[0]?.body))
     expect(body.parts).toEqual([{ type: 'text', text: '改写这段' }])
     expect(body.model).toEqual({ providerID: 'anthropic', modelID: 'claude-sonnet-5' })
+    // a4 实测缺陷：不带 agent 时引擎落到默认 build agent（完整 coding persona + 技能表）。
+    // 这里断言 agent 逐字进 body——它是「markup 只唤起改写 agent」在协议层的那一半。
+    expect(body.agent).toBe('rewrite')
+  })
+
+  it('send 不带 agent 时 body 里也不出现 agent 键（引擎侧才好落到 default_agent）', async () => {
+    const { bridge, calls } = mockBridge(() => Response.json({}))
+    await bridge.send('s_1', [{ type: 'text', text: 'x' }], { directory: BOOK })
+    const body = JSON.parse(String(calls[0]?.body)) as Record<string, unknown>
+    expect('agent' in body).toBe(false)
   })
 
   it('interrupt → POST /session/{id}/abort', async () => {
@@ -111,8 +122,26 @@ describe('AgentBridge 五方法', () => {
         ),
     )
     const seen: EngineEvent[] = []
-    await bridge.stream({ onEvent: (event) => seen.push(event) })
+    await bridge.stream({ directory: BOOK, onEvent: (event) => seen.push(event) })
     expect(calls[0]?.url.pathname).toBe('/event')
     expect(seen.map((event) => event.type)).toEqual(['server.connected', 'message.part.delta', 'server.heartbeat'])
+  })
+
+  // a4 真引擎实测的第三个缺陷（与缺陷 A 同科：directory 没传到底）。
+  // `/event` **是实例级而非全局级**的：引擎按 `directory` 找实例，缺了就
+  // 回落到 `process.cwd()`（vendor workspace-routing.ts:87）。于是流订在了
+  // cwd 那个实例上，session 却活在 book 实例里——renderer 整轮只收得到
+  // `server.heartbeat`，一条 message 事件都等不到，浮层永远停在 generating。
+  // 五方法里只有 stream 漏了纪律 10 的类型化 directory，这条补上那一格。
+  it('stream → GET /event **必须带 directory**：缺了引擎会回落到 cwd 实例', async () => {
+    const { bridge, calls } = mockBridge(
+      () =>
+        new Response(new ReadableStream<Uint8Array>({ start: (controller) => controller.close() }), {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+    )
+    await bridge.stream({ directory: BOOK, onEvent: () => {} })
+    expect(calls[0]?.url.searchParams.get('directory')).toBe('/tmp/book')
   })
 })

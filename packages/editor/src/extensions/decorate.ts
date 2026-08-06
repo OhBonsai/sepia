@@ -17,6 +17,7 @@ import {
   MathWidget,
   TableWidget,
   TextDiagramWidget,
+  type InlineRenderer,
 } from '../widgets/render.ts'
 
 // A/B/C/D 四类装饰的引擎。整个文件只做一件事：**把 state 翻译成显示**。
@@ -31,6 +32,17 @@ import {
 
 /** 图片相对路径的解析基（page 所在目录）。null = 不解析，原样交给 img。 */
 export const assetBase = Facet.define<string | null, string | null>({
+  combine: (values) => values[0] ?? null,
+})
+
+/**
+ * C 类 widget 内部的行内渲染器（150 §1.9 回流）。null = widget 内按 raw 文本呈现。
+ *
+ * **为什么走 Facet 而不是直接 import**：实现（`widgets/inline-dom.ts`）要调用本文件的
+ * `buildDecorations`，本文件又要构造 widget——直接 import 就成环，被结构 2 挡下。
+ * 注入点因此上提到总装层（`markdown.ts`），与 `assetBase` 同一个套路。
+ */
+export const inlineRenderer = Facet.define<InlineRenderer | null, InlineRenderer | null>({
   combine: (values) => values[0] ?? null,
 })
 
@@ -342,7 +354,8 @@ export function buildBlockDecorations(state: EditorState): DecorationSet {
         builder.add(node.from, node.to, Decoration.replace({ widget: new TextDiagramWidget(src), block: true }))
         return false
       }
-      const widget = name === 'Table' ? new TableWidget(src) : new MathWidget(src, true)
+      const widget =
+        name === 'Table' ? new TableWidget(src, state.facet(inlineRenderer)) : new MathWidget(src, true)
       builder.add(node.from, node.to, Decoration.replace({ widget, block: true }))
       return false
     },

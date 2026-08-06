@@ -5,6 +5,7 @@
 // 免得「反正封装好了」诱着 UI 提前长出来。Stage 4 浮层落地，封装随之补齐——
 // **桥上一项没加**（preload 恰好八项，140 §1.3 预声明的就是这一刻）。
 
+import type { TaskType } from '@sepia/agent/tasks'
 import type { EngineStatus, IoResult } from '@sepia/core'
 
 /** 引擎推来的一条事件。形状随事件而异，消费方各取所需（协议规则 4：未知类型忽略）。 */
@@ -27,9 +28,9 @@ interface AgentSurface {
   send(
     threadId: string,
     parts: Array<{ type: 'text'; text: string }>,
-    options: { directory: string; model?: { providerID: string; modelID: string } },
+    options: { directory: string; model?: { providerID: string; modelID: string }; agent?: TaskType },
   ): Promise<IoResult<void>>
-  stream(): Promise<IoResult<void>>
+  stream(directory: string): Promise<IoResult<void>>
   interrupt(threadId: string, directory: string): Promise<IoResult<void>>
   listModels(): Promise<IoResult<AgentModel[]>>
   onEvent(callback: (event: AgentEvent) => void): () => void
@@ -45,9 +46,9 @@ export const agent = {
   send: (
     threadId: string,
     parts: Array<{ type: 'text'; text: string }>,
-    options: { directory: string; model?: { providerID: string; modelID: string } },
+    options: { directory: string; model?: { providerID: string; modelID: string }; agent?: TaskType },
   ) => bridge.send(threadId, parts, options),
-  stream: () => bridge.stream(),
+  stream: (directory: string) => bridge.stream(directory),
   interrupt: (threadId: string, directory: string) => bridge.interrupt(threadId, directory),
   listModels: () => bridge.listModels(),
   onEvent: (callback: (event: AgentEvent) => void) => bridge.onEvent(callback),
