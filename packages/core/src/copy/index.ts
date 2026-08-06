@@ -53,6 +53,17 @@ export const copy = {
   'markup.aborted': '已停止，纸没有被动过',
   'markup.stale': '这段文字在生成期间被改过了，没有落笔。重试或手动处理',
   'markup.model': '模型',
+
+  // Stage 6a：纸与外部世界的冲突（架构 §4.9）。三句话都在说同一件事——
+  // **纸上的字没有丢**。三选（保留我的/用外部的/看 diff）归 b 期，a 期只报事实。
+  'conflict.saved': '这个文件在外部被改过。你刚敲的字已经落盘，外部那一版没有被载入',
+  'conflict.removed': '这个文件在外部被删除了。内容还在纸上，⌘S 可以另存回去',
+  'conflict.watcher.degraded': '文件监听在这个位置不可用，已改为切回窗口时校准',
+
+  'cmd.file.new': '新建 page',
+  'cmd.file.rename': '重命名',
+  'cmd.file.move': '移动到…',
+  'cmd.file.trash': '移到回收站',
 } as const
 
 export type CopyKey = keyof typeof copy
