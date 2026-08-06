@@ -77,6 +77,43 @@ async function type(win: Page, text: string): Promise<void> {
   await win.keyboard.type(text)
 }
 
+/**
+ * 截图里有多少个「危险色」像素落在右下角区域。
+ *
+ * **为什么非得数像素**（真人轮的教训，160 §1.9 条目 7）：
+ *   · `toBeVisible()` 只看盒子非空 + `visibility`——**被别的元素盖住它一概看不见**，
+ *     警示点整个藏在编辑器底下时这条断言照样绿；
+ *   · `elementFromPoint` 对 `pointer-events: none` 的元素恒返回它下面那层，
+ *     加不加 z-index 都报"被盖住"，拿它当判据会把人带沟里（实测被带过一次）。
+ * 解码交给 Chromium 自己（base64 → Image → canvas → getImageData），不引任何图像库。
+ */
+async function dangerPixelsBottomRight(win: Page): Promise<number> {
+  const shot = (await win.screenshot()).toString('base64')
+  return win.evaluate(async (data: string) => {
+    const img = new Image()
+    await new Promise((resolve, reject) => {
+      img.addEventListener('load', resolve)
+      img.addEventListener('error', reject)
+      img.src = `data:image/png;base64,${data}`
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext('2d')
+    if (ctx === null) return -1
+    ctx.drawImage(img, 0, 0)
+    const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    let hits = 0
+    for (let i = 0; i < px.length; i += 4) {
+      // --sepia-danger 实测为 rgb(209,77,65)；容差 16 吃掉圆角抗锯齿
+      if (Math.abs(px[i]! - 209) > 16 || Math.abs(px[i + 1]! - 77) > 16 || Math.abs(px[i + 2]! - 65) > 16) continue
+      const index = i / 4
+      if (index % canvas.width > canvas.width * 0.9 && Math.floor(index / canvas.width) > canvas.height * 0.9) hits++
+    }
+    return hits
+  }, shot)
+}
+
 async function messages(book: string): Promise<string[]> {
   const { stdout } = await run('git', ['log', '--format=%B%x00'], { cwd: book })
   return stdout
@@ -119,16 +156,29 @@ test('#7b 没有新改动就不再产生 commit（不刷空 commit）', async ()
   await app.close()
 })
 
-test('#8 写盘失败 → 纸角持久警示点，恢复即消', async () => {
+test('#8 写盘失败 → 纸角警示点**在屏幕上真的看得见**，恢复即消', async () => {
   const { app, win, book } = await boot({ readonly: true })
+  // 亮起之前：右下角一个危险色像素都没有（基线，防止"本来就红"的假绿）
+  expect(await dangerPixelsBottomRight(win), '还没失败，右下角就已经有红点了？').toBe(0)
+
   await type(win, '写不进去的字。')
   // 目录只读 → 原子写的 rename 失败 → 警示点亮起
   await expect(win.locator('[data-sepia-save-warning="on"]')).toBeVisible({ timeout: 10_000 })
 
-  // 恢复权限后再写一次 → 点消失（"恢复即消"）
+  // **判据是像素**：属性在、盒子在，都不等于用户看得见（真人轮实测：点被编辑器
+  // 整个盖住，属性断言照样绿）。预定破坏：CSS 去掉 z-index / width 改 0 /
+  // 去掉 background —— 属性与盒子都还在，这一条必红。
+  await expect
+    .poll(async () => dangerPixelsBottomRight(win), { timeout: 10_000 })
+    .toBeGreaterThan(20)
+  // 证据留档：真人轮看到的那一幕，修好之后长什么样（160 §1.9 条目 7）
+  await win.screenshot({ path: 'specs/plan/evidence/160/save-warning-visible.png' })
+
+  // 恢复权限后再写一次 → 点消失（"恢复即消"），且屏幕上也真的没了
   await chmod(book, 0o755)
   await type(win, '现在能写了。')
   await expect(win.locator('[data-sepia-save-warning="on"]')).toHaveCount(0, { timeout: 10_000 })
+  await expect.poll(async () => dangerPixelsBottomRight(win), { timeout: 10_000 }).toBe(0)
   await app.close()
 })
 

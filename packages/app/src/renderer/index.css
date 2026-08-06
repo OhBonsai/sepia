@@ -41,11 +41,23 @@ body {
 }
 
 /* 纸角持久警示点（架构 §4.2）：写盘失败时亮起，**恢复即消**。
-   一个点的存在感——它要的是"你该知道"，不是"你必须现在处理"。 */
+   一个点的存在感——它要的是"你该知道"，不是"你必须现在处理"。
+
+   **z-index 不是装饰，是这个点能不能被看见**（真人轮实测，160 §1.9 条目 7）：
+   它在 DOM 里排在编辑器**之前**，而 CM6 的 `.cm-content` 是定位元素——同为
+   `z-index: auto` 时按文档顺序绘制，后来的盖住先来的。当时的实测：点确实挂上了、
+   位置在视口右下角 (1062,674)、背景色也确实是 danger red，**但截图里那一块
+   一个 danger 像素都没有**；加上 z-index 之后同一处扫出 180 个。与查找面板同取 10。
+
+   **判据只能是像素**：`elementFromPoint` 对 `pointer-events: none` 的元素恒返回
+   它下面那层，加不加 z-index 都报"被盖住"（本轮被它误导过一次）；Playwright 的
+   `toBeVisible()` 只看盒子非空与 `visibility`，盖住与否一概看不见——smoke #8
+   当初就是这么绿的。 */
 .sepia-save-warning {
   position: fixed;
   right: 10px;
   bottom: 10px;
+  z-index: 10;
   width: 8px;
   height: 8px;
   border-radius: 50%;
