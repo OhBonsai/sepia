@@ -155,12 +155,12 @@ export function App(): React.JSX.Element {
     [],
   )
 
-  const open = useCallback(async (path: string, cursor = 0, scrollTop = 0): Promise<void> => {
+  const open = useCallback(async (path: string, cursor = 0, scrollTop = 0): Promise<boolean> => {
     const read = await api.readFile(path)
     if (!read.ok) {
       setError(t('error.open.failed'))
       setStatus('empty')
-      return
+      return false
     }
     const { fidelity, body } = readFidelity(read.value)
     // t4：page 文件内容到手
@@ -171,6 +171,7 @@ export function App(): React.JSX.Element {
     setDirty(false)
     setError(null)
     setStatus('ready')
+    return true
   }, [])
 
   const save = useCallback(
@@ -241,10 +242,19 @@ export function App(): React.JSX.Element {
       const tab = next.tabs[next.active]
       sessionRef.current = next
       setSession(next)
+      const opened = await open(absolute, tab?.cursor ?? 0, tab?.scrollTop ?? 0)
+      if (!opened) {
+        // **打不开就把 tab 收回去**（真人轮实测）：留着一个开不出内容的 tab，
+        // 用户看到的是"tab 在、纸是空的、红字挂着"——比什么都没发生更糟。
+        // session 也不写盘，免得把这个坏 tab 带到下次启动。
+        sessionRef.current = current
+        setSession(current)
+        return
+      }
       void api.setSession(next)
-      // 最近打开（§2.1 ③）：置顶+去重+截断在 core，这里只报"打开了它"
+      // 最近打开（§2.1 ③）：置顶+去重+截断在 core，这里只报"打开了它"。
+      // **放在打开成功之后**——打不开的东西不该进"最近打开"
       if (next.book !== null) void api.libraryRecents(next.book, relative)
-      await open(absolute, tab?.cursor ?? 0, tab?.scrollTop ?? 0)
     },
     [open, withCurrentPosition],
   )

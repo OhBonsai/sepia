@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { t } from '@sepia/core'
+import { t, tabPath } from '@sepia/core'
 
 import { api } from '../services/api.ts'
 
@@ -65,9 +65,14 @@ export function Home(props: HomeProps): React.JSX.Element {
               key={page}
               className="sepia-home-recent"
               data-sepia-home-recent={page}
-              onClick={() => onOpenPage(`${book.replace(/\/$/, '')}/${page}`)}
+              // **必须走 `tabPath`**：recents 里存的是 tab 那一套两形态路径——
+              // book 内的是相对、**游离的是绝对**。手拼 `book + '/' + page` 会把绝对路径
+              // 接在 book 后面，拼出一个不存在的路径（真人轮实测：点最近就"打不开这个文件"）。
+              // core 里那句"两个进程共用一份换算口"就是为了防这个，我却在这儿又拼了一遍。
+              onClick={() => onOpenPage(tabPath(book, page))}
+              title={page}
             >
-              {page}
+              {page.split('/').pop()}
             </div>
           ))}
         </div>

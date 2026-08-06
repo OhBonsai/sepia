@@ -40,7 +40,8 @@ export interface ExternalChangeOptions {
   /** ⌘S 那条保存路径本身。有脏时**先落盘**用它，不另开通道。 */
   save: () => Promise<void>
   /** 打开 page 的既有路径。重载 = 用新光标重新 open 一次。 */
-  reload: (path: string, cursor: number, scrollTop: number) => Promise<void>
+  /** 重载。返回值（打开成没成）这条路不关心——外部变更的重载失败由横条那一半兜。 */
+  reload: (path: string, cursor: number, scrollTop: number) => Promise<unknown>
   /** 此刻的光标与滚动。重载要用它们「尽量保住光标」（架构 §4.9）。 */
   position: () => { cursor: number; scrollTop: number }
 }

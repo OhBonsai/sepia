@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -34,6 +34,24 @@ async function makeBook(options: { extra?: number } = {}): Promise<Book> {
   }
   await mkdir(join(home, '.sepia'), { recursive: true })
   return { home, book, pages: ['a.md', 'b.md', 'sub/c.md'] }
+}
+
+/**
+ * 直接种一份 recents。
+ *
+ * **不能靠"开一次 tab"来种**：从 session 恢复出来的 tab 不走 `openInTab`，
+ * 因此不进 recents（那本身是另一件事，见 §2.9 条目 5 的备注）。
+ * 这里种的正是出事那条数据的形状：**book 内的存相对、游离的存绝对**。
+ */
+async function seedRecents(fixture: Book, pages: string[]): Promise<void> {
+  // book-id 的散列在 core 里，而 smoke 目录不在 workspace 的解析范围内——
+  // 与其为一个测试改依赖图，不如把 books/ 下唯一那个目录找出来（fixture 只有一个 book）
+  const { bookId } = (await import('../../packages/core/src/books/id.ts')) as {
+    bookId: (path: string) => string
+  }
+  const dir = join(fixture.home, '.sepia', 'books', bookId(await realpath(fixture.book)))
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'recents.json'), JSON.stringify({ version: 1, pages }), 'utf8')
 }
 
 async function launch(
@@ -273,4 +291,42 @@ test('#7c 没有 .md 的文件夹作 book → **说人话**，不是两个哑目
   await expect(win.locator('[data-sepia-tree-kind="file"]')).toHaveCount(0)
   // 二：**说了人话**，而不是留一片空白让人以为坏了
   await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible()
+})
+
+test('#8b 关掉所有 tab → 点最近的**游离** page → 真的打开（不是"打不开这个文件"）', async () => {
+  // 真人轮撞出来的（§2.9 条目 5）：recents 里 book 内的存相对、**游离的存绝对**，
+  // 主页当时把两种都当相对去拼 book 前缀，拼出一个不存在的路径。
+  const fixture = await makeBook()
+  const loose = join(fixture.home, '游离的一篇.md')
+  await writeFile(loose, '# 游离\n\n它不在 book 里。\n', 'utf8')
+
+  await seedRecents(fixture, [loose]) // 游离 page 在 recents 里是**绝对路径**
+  const win = await launch(fixture, { version: 2, book: fixture.book, tabs: [], active: 0 })
+
+  // 一个 tab 都没有 → 主页，最近里有那条游离记录
+  await expect(win.locator('[data-sepia-home]')).toBeVisible()
+  const recent = win.locator(`[data-sepia-home-recent="${loose}"]`)
+  await expect(recent, '游离 page 没进最近列表').toHaveCount(1)
+
+  // 点它 → **真的打开**
+  await recent.click()
+  await expect(win.locator('.sepia-error'), '又是"打不开这个文件"').toHaveCount(0)
+  await expect(win.locator('.cm-content')).toContainText('它不在 book 里')
+  await expect(win.locator('.sepia-tab')).toHaveCount(1)
+})
+
+test('#8c 最近里指向已删除的文件 → 报错但**不留一个开不出内容的 tab**', async () => {
+  const fixture = await makeBook()
+  const gone = join(fixture.book, 'gone.md')
+  await writeFile(gone, '# 待会儿删掉\n', 'utf8')
+  await seedRecents(fixture, ['gone.md'])
+  const { rm } = await import('node:fs/promises')
+  await rm(gone) // 最近里还记着它，盘上已经没有了
+  const win = await launch(fixture, { version: 2, book: fixture.book, tabs: [], active: 0 })
+  await expect(win.locator('[data-sepia-home]')).toBeVisible()
+
+  await win.locator('[data-sepia-home-recent="gone.md"]').click()
+  await expect(win.locator('.sepia-error')).toBeVisible()
+  // **tab 收回去了**：留着一个 tab 在、纸是空的、红字挂着，比什么都没发生更糟
+  await expect(win.locator('.sepia-tab'), '留下了一个开不出内容的 tab').toHaveCount(0)
 })
