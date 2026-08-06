@@ -349,3 +349,40 @@ body {
   color: var(--sepia-ink);
   background: var(--sepia-selection);
 }
+
+/* ── Tab 条（170 §2.1 ①）────────────────────────────────────────────────
+   一行细字，不是工具栏：只有文件名与一个关闭点，没有图标、没有拖拽排序。
+   它与横条族同高同字号——纸上方的所有家具应当看起来是同一个东西。 */
+.sepia-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-tab {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.sepia-tab[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  border-bottom-color: var(--sepia-ink);
+}
+
+.sepia-tab-close {
+  color: var(--sepia-ink-muted);
+  opacity: 0;
+}
+
+.sepia-tab:hover .sepia-tab-close {
+  opacity: 1;
+}

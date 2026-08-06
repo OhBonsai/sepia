@@ -56,18 +56,32 @@ export interface AppConfig {
   }
 }
 
+/** 一个 tab 的位置状态。每个 tab 各记各的光标与滚动——切回来要回到原处。 */
+export interface TabState {
+  /**
+   * page 路径。**book 内的存 book 相对路径，游离的存绝对路径**（170 §2.1 ①）：
+   * 相对路径让 book 整体搬家之后 session 仍然成立，而游离 page 没有 book 可依。
+   */
+  page: string
+  cursor: number
+  scrollTop: number
+}
+
 /**
  * `~/.sepia/session.json`——是**状态**不是设置，与 config 分开（架构 §2.2）。
- * 本 stage 只记一个 page：**不建 tab 数组**，多 Tab 归 Stage 6。
+ *
+ * **v2 直接是终态，不做迁移**（170 §2.0 人裁 1）：产品未发布，没有兼容负担；
+ * 读到 v1 按"损坏"处理退空会话。多花的力气应该花在终态上，不是花在给不存在的
+ * 用户做迁移上。
  */
 export interface SessionState {
   version: number
-  /** 上次打开的 page 的绝对路径。为 null 表示没有上次。 */
-  page: string | null
-  /** 光标在文档中的偏移量（字符数，非字节）。 */
-  cursor: number
-  /** 编辑区滚动位置（像素）。 */
-  scrollTop: number
+  /** 当前 book 的绝对路径。null = 没有 book（全是游离 page，或空会话）。 */
+  book: string | null
+  /** 打开着的 tab。空数组 = 显示主页。 */
+  tabs: TabState[]
+  /** 当前 tab 的下标。tabs 为空时无意义（存 0）。 */
+  active: number
 }
 
 /** 启动打点。口径见 120 §1.7，**六个点的定义不许在实施中改**。 */

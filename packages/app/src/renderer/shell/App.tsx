@@ -2,8 +2,14 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
+  EMPTY_SESSION,
+  closeTab,
   createAnchor,
   markupReport,
+  openTab,
+  tabPath,
+  tabRelative,
+  updateTab,
   type EngineStatus,
   type MarkupRun,
   type SessionState,
@@ -90,22 +96,34 @@ export function App(): React.JSX.Element {
   const [searchReplace, setSearchReplace] = useState('')
   const [searchCount, setSearchCount] = useState(0)
 
+  // 多 Tab（170 §2.1 ①）：**session 就是 tab 的真相源**，不另建一份 tabs state。
+  // 两份状态一定会漂——而"漂"在这里的表现是"关了一个 tab，另一个的光标跑了"。
+  const [session, setSession] = useState<SessionState>(EMPTY_SESSION)
+  const sessionRef = useRef<SessionState>(EMPTY_SESSION)
+  sessionRef.current = session
+
   // session 的最新值攒在 ref 里，到点一次写完——不随每个事件写盘（附录 D.3 第 2 条）。
   const sessionDraft = useRef({ cursor: 0, scrollTop: 0 })
   const sessionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const schedulePersist = useCallback((path: string): void => {
+  /** 把当前 tab 的光标与滚动并进 session。**切走 / 关闭 / 写盘前都要过这一步**。 */
+  const withCurrentPosition = useCallback((state: SessionState): SessionState => {
+    if (state.tabs.length === 0) return state
+    return updateTab(state, state.active, {
+      cursor: sessionDraft.current.cursor,
+      scrollTop: sessionDraft.current.scrollTop,
+    })
+  }, [])
+
+  const schedulePersist = useCallback((): void => {
     if (sessionTimer.current !== null) clearTimeout(sessionTimer.current)
     sessionTimer.current = setTimeout(() => {
       sessionTimer.current = null
-      void api.setSession({
-        version: 1,
-        page: path,
-        cursor: sessionDraft.current.cursor,
-        scrollTop: sessionDraft.current.scrollTop,
-      })
+      const next = withCurrentPosition(sessionRef.current)
+      sessionRef.current = next
+      void api.setSession(next)
     }, SESSION_DEBOUNCE_MS)
-  }, [])
+  }, [withCurrentPosition])
 
   useEffect(
     () => () => {
@@ -188,17 +206,75 @@ export function App(): React.JSX.Element {
     }
   }, [page])
 
+  /**
+   * 打开一个 page：**开成 tab**（已开着就聚焦过去）。
+   * ⌘O / 文件树 / `@` / argv 四个入口全走这一条——"重复打开"的判断只在 `openTab` 里一处。
+   */
+  const openInTab = useCallback(
+    async (absolute: string): Promise<void> => {
+      const current = withCurrentPosition(sessionRef.current)
+      const relative = tabRelative(current.book, absolute)
+      const next = openTab(current, { page: relative, cursor: 0, scrollTop: 0 })
+      const tab = next.tabs[next.active]
+      sessionRef.current = next
+      setSession(next)
+      void api.setSession(next)
+      await open(absolute, tab?.cursor ?? 0, tab?.scrollTop ?? 0)
+    },
+    [open, withCurrentPosition],
+  )
+
+  /** 切到第 index 个 tab：**先把当前位置存住**，再把那个 tab 的位置还原回去。 */
+  const switchTab = useCallback(
+    async (index: number): Promise<void> => {
+      const current = withCurrentPosition(sessionRef.current)
+      const target = current.tabs[index]
+      if (target === undefined || index === current.active) return
+      const next = { ...current, active: index }
+      sessionRef.current = next
+      setSession(next)
+      void api.setSession(next)
+      await open(tabPath(next.book, target.page), target.cursor, target.scrollTop)
+    },
+    [open, withCurrentPosition],
+  )
+
+  /** 关掉一个 tab。全关光 → 回主页（不是白屏）。 */
+  const closeTabAt = useCallback(
+    async (index: number): Promise<void> => {
+      const next = closeTab(withCurrentPosition(sessionRef.current), index)
+      sessionRef.current = next
+      setSession(next)
+      void api.setSession(next)
+      const target = next.tabs[next.active]
+      if (target === undefined) {
+        setPage(null)
+        setStatus('empty')
+        return
+      }
+      await open(tabPath(next.book, target.page), target.cursor, target.scrollTop)
+    },
+    [open, withCurrentPosition],
+  )
+
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
-    if (chosen) await open(chosen)
-  }, [open])
+    if (chosen) await openInTab(chosen)
+  }, [openInTab])
 
-  // 启动：读 session → 打开上次的 page。同步路径上只有这一件事（纪律 12）。
+  // 启动：读 session → **恢复 tabs 与 active**（170 §2.1 ①）。
+  // 同步路径上仍然只有这一件事（纪律 12）：文件树、@ 索引都在 t5 之后异步补。
   useEffect(() => {
     void (async () => {
-      const session: SessionState = await api.getSession()
-      if (session.page) await open(session.page, session.cursor, session.scrollTop)
-      else setStatus('empty')
+      const restored: SessionState = await api.getSession()
+      sessionRef.current = restored
+      setSession(restored)
+      const current = restored.tabs[restored.active]
+      if (current === undefined) {
+        setStatus('empty')
+        return
+      }
+      await open(tabPath(restored.book, current.page), current.cursor, current.scrollTop)
     })()
   }, [open])
 
@@ -340,12 +416,31 @@ export function App(): React.JSX.Element {
       key: 'Mod-Shift-h',
       run: () => void editor.current?.toggleBadges(),
     })
+    // 多 Tab（170 §2.1 ①）。⌘W 关、⌘⇧[ ⌘⇧] 切——与浏览器同一套肌肉记忆
+    registerCommand({
+      id: 'tab.close',
+      title: 'cmd.tab.close',
+      key: 'Mod-w',
+      run: () => void closeTabAt(sessionRef.current.active),
+    })
+    registerCommand({
+      id: 'tab.prev',
+      title: 'cmd.tab.prev',
+      key: 'Mod-Shift-[',
+      run: () => void switchTab(sessionRef.current.active - 1),
+    })
+    registerCommand({
+      id: 'tab.next',
+      title: 'cmd.tab.next',
+      key: 'Mod-Shift-]',
+      run: () => void switchTab(sessionRef.current.active + 1),
+    })
     registerCommand({
       id: 'threads.panel',
       title: 'cmd.threads.panel',
       run: () => setPanelOpen((isOpen) => !isOpen),
     })
-  }, [save, pick, openSearch, summon])
+  }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -366,6 +461,15 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'k') {
         event.preventDefault()
         summon()
+      } else if (event.key === 'w') {
+        event.preventDefault()
+        void closeTabAt(sessionRef.current.active)
+      } else if (event.shiftKey && (event.key === '{' || event.key === '[')) {
+        event.preventDefault()
+        void switchTab(sessionRef.current.active - 1)
+      } else if (event.shiftKey && (event.key === '}' || event.key === ']')) {
+        event.preventDefault()
+        void switchTab(sessionRef.current.active + 1)
       } else if ((event.key === 'h' || event.key === 'H') && event.shiftKey) {
         // ⌘⇧H 还白（W10）
         event.preventDefault()
@@ -374,7 +478,7 @@ export function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [save, pick, openSearch, summon])
+  }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
   useEffect(() => {
     document.title = page ? `${dirty ? '• ' : ''}${page.path.split('/').pop()}` : t('app.name')
@@ -415,6 +519,32 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="sepia-shell" data-sepia-shell={status} data-sepia-markup-report={report ?? undefined}>
+      {session.tabs.length > 0 && (
+        <div className="sepia-tabs" data-sepia-tabs={String(session.tabs.length)}>
+          {session.tabs.map((tab, index) => (
+            <div
+              key={tab.page}
+              className="sepia-tab"
+              data-sepia-tab={tab.page}
+              data-sepia-tab-active={index === session.active ? 'true' : 'false'}
+              onClick={() => void switchTab(index)}
+            >
+              {/* 只有文件名，没有图标——tab 条是一行细字，不是工具栏 */}
+              <span className="sepia-tab-name">{tab.page.split('/').pop()}</span>
+              <span
+                className="sepia-tab-close"
+                data-sepia-tab-close={tab.page}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void closeTabAt(index)
+                }}
+              >
+                ×
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}
@@ -547,11 +677,11 @@ export function App(): React.JSX.Element {
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor
-            schedulePersist(page.path)
+            schedulePersist()
           }}
           onScrollChange={(scrollTop) => {
             sessionDraft.current.scrollTop = scrollTop
-            schedulePersist(page.path)
+            schedulePersist()
           }}
           onReady={() => api.perfMark('t5')}
         />

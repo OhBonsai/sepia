@@ -76,6 +76,11 @@ export const copy = {
   'conflict.choice.both': '都留着（外部那版另存为新文件）',
   'conflict.preserved': '另一版已备份到 .sepia 的 conflicts 里',
 
+  // Stage 6b：多 Tab
+  'cmd.tab.close': '关闭这一页',
+  'cmd.tab.prev': '上一页',
+  'cmd.tab.next': '下一页',
+
   'cmd.file.new': '新建 page',
   'cmd.file.rename': '重命名',
   'cmd.file.move': '移动到…',

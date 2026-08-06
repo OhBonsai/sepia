@@ -13,6 +13,8 @@ import {
   type PerfMark,
   type SessionState,
   type Thread,
+  openTab,
+  tabRelative,
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
@@ -188,8 +190,10 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     // 而这个 page 可能压根不属于任何 book（游离，T-30）——那条降级由 main 侧判定，
     // renderer 什么都不必知道：纸完全可写，与不变量 1 同构。
     const first = takeNextPendingPath()
-    if (first !== null) return { ...session, page: first, cursor: 0, scrollTop: 0 }
-    return session
+    if (first === null) return session
+    // **开成一个新 tab，而不是替换整个会话**（170 §2.1 ①）：命令行/双击打开一个文件，
+    // 不该把用户上次开着的其它 tab 全关掉。`openTab` 里已经含"已开着就聚焦"的判断。
+    return openTab(session, { page: tabRelative(session.book, first), cursor: 0, scrollTop: 0 })
   })
 
   ipcMain.handle('session/set', async (_event, state: unknown): Promise<void> => {
