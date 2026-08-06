@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 
 import { type FSWatcher, watch } from 'chokidar'
@@ -7,11 +7,9 @@ import {
   type ExternalChangeKind,
   type FileNotice,
   type FileStamp,
-  isSelfWrite,
+  type SelfWriteLog,
   reconcileKind,
 } from '@sepia/core'
-
-import { recentSelfWrites } from './self-writes.ts'
 
 // 文件监听（架构 §4.9 / T-26）。三件事，缺一件就有一类字节风险：
 //
@@ -77,6 +75,18 @@ export interface WatcherStatus {
 export interface WatcherOptions {
   /** 网络盘的逃生舱（架构 §4.9）。chokidar v4 仍支持，走 `fs.watchFile` 轮询。 */
   usePolling?: boolean
+  /**
+   * 「最近自写记录」的取法——**L2 的共享接缝**（`savePipeline()?.selfWrites`，160 §1.1〇-3）。
+   *
+   * 为什么是注入而不是在这里 `import { savePipeline } from '../ipc/index.ts'`：
+   * ipc 已经 import 本模块（`file/read` 挂 watcher、`file/write` 刷印记），
+   * 反向 import 就成环，`check:deps` 的 `no-circular` 当场红。装配点在 `main/index.ts`——
+   * 那本来就是"把各服务接起来"的地方。
+   *
+   * 取法是**函数**而不是值：管线在 `registerIpc` 时才建，而 watcher 的配置发生在
+   * 同一拍里，拿值会拿到建之前的 undefined。
+   */
+  selfWrites?: () => SelfWriteLog | null
 }
 
 type Listener = (notice: FileNotice) => void
@@ -85,6 +95,13 @@ const listeners = new Set<Listener>()
 let watcher: FSWatcher | null = null
 let watchedDir: string | null = null
 let currentPage: string | null = null
+/**
+ * `currentPage` 的 realpath。**claim 必须拿这一个去比**——L2 登记时用的是 realpath，
+ * 而 renderer 给的路径是 session 里那一串（macOS 上常常是 `/var/...` 而不是
+ * `/private/var/...`）。不归一化，两侧永远比不上，回声就一次也挡不住（a4 栽过的坑）。
+ * 事件与通知仍然用 `currentPage` 原样的形态——renderer 是按它认自己那一页的。
+ */
+let realPage: string | null = null
 let stamp: FileStamp | null = null
 let mode: WatcherStatus['mode'] = 'watching'
 let degradedTold = false
@@ -132,6 +149,7 @@ async function stampOf(path: string): Promise<FileStamp | null> {
  */
 export async function watchPage(path: string): Promise<void> {
   currentPage = path
+  realPage = await realpath(path).catch(() => path)
   stamp = await stampOf(path)
   if (FORCE_DEGRADE) {
     degrade('SEPIA_WATCHER_FORCE_DEGRADE')
@@ -227,8 +245,11 @@ async function settle(path: string, kind: ExternalChangeKind): Promise<void> {
   // a 期只有一个消费者：当前 page。别的 .md 变了没人要（文件树归 b 期）。
   if (currentPage === null || path !== currentPage) return
   const next = await stampOf(path)
-  // 纪律 17：自写回声。判据在 core（纯函数、可穷举断言），表在 self-writes（L2 接缝）。
-  if (isSelfWrite(recentSelfWrites(), { path, mtimeMs: next?.mtimeMs ?? null }, Date.now())) {
+  // 纪律 17：自写回声。判据与表都在 L2 的接缝里（`createSelfWriteLog`）——
+  // **claim 是消费型**：一条自写只挡一次回声，所以挡住之后顺手把印记推平，
+  // 免得同一次写的第二个事件还要靠下面的印记守卫再赌一次。
+  // 「一次写 = 恰好一个事件」这条前提已在真管线上实证（20/20，170 §1.5 集成一节）。
+  if (claimSelfWrite(next)) {
     stamp = next
     return
   }
@@ -236,6 +257,20 @@ async function settle(path: string, kind: ExternalChangeKind): Promise<void> {
   if (kind === 'changed' && next !== null && stamp !== null && reconcileKind(stamp, next) === null) return
   stamp = next
   emit({ type: 'external-change', path, kind, source: 'watcher' })
+}
+
+/**
+ * 这次变更是不是我们自己写的？
+ *
+ * 指纹三件套一件都不能少（L2 接缝语义）：**realpath + mtime + size**。
+ * 文件已经不在了（拿不到印记）就没法比指纹——自己删的那条由「谁在动手」那侧收尾
+ * （见 `services/files.ts` 的长注释），这里放行。
+ */
+function claimSelfWrite(fingerprint: FileStamp | null): boolean {
+  if (fingerprint === null || realPage === null) return false
+  const log = options.selfWrites?.() ?? null
+  if (log === null) return false
+  return log.claim({ path: realPage, mtimeMs: fingerprint.mtimeMs, size: fingerprint.size })
 }
 
 /**
@@ -248,7 +283,7 @@ export async function reconcile(): Promise<void> {
   const current = await stampOf(path)
   const kind = reconcileKind(stamp, current)
   if (kind === null) return
-  if (isSelfWrite(recentSelfWrites(), { path, mtimeMs: current?.mtimeMs ?? null }, Date.now())) {
+  if (claimSelfWrite(current)) {
     stamp = current
     return
   }
@@ -276,6 +311,7 @@ export async function resetWatcher(): Promise<void> {
   await stopWatcher()
   listeners.clear()
   currentPage = null
+  realPage = null
   stamp = null
   mode = 'watching'
   degradedTold = false

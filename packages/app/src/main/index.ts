@@ -7,7 +7,14 @@ import { homedir } from 'node:os'
 import { app, BrowserWindow } from 'electron'
 
 import { markdownPathsFrom, peekPendingPaths, queuePaths } from './argv.ts'
-import { broadcastAgent, broadcastFiles, broadcastTheme, registerIpc, stopSavePipeline } from './ipc/index.ts'
+import {
+  broadcastAgent,
+  broadcastFiles,
+  broadcastTheme,
+  registerIpc,
+  savePipeline,
+  stopSavePipeline,
+} from './ipc/index.ts'
 import { startEngine, stopEngine } from './services/agent-supervisor.ts'
 import { loadConfig, saveConfig, type LoadedConfig } from './services/config.ts'
 import { loadCredentials } from './services/credentials.ts'
@@ -160,7 +167,14 @@ if (!app.requestSingleInstanceLock()) {
       broadcastFiles()
       // 网络盘逃生舱（架构 §4.9）。watcher 本体的挂载在 renderer 打开 page 之后
       // （见 ipc 的 `file/read`）——它属于异步路径，纪律 12 不许它挡光标。
-      configureWatcher({ usePolling: loaded.config.watcher.usePolling })
+      //
+      // **共享接缝在这里接上**（160/170 §1.1〇-3）：L2 的写盘管线登记自写，
+      // L3 的 watcher 只 claim。装配放在这儿而不是让 watcher 去 import ipc——
+      // ipc 已经 import 了 watcher，反向 import 会成环（check:deps 的 no-circular）。
+      configureWatcher({
+        usePolling: loaded.config.watcher.usePolling,
+        selfWrites: () => savePipeline()?.selfWrites ?? null,
+      })
 
       queuePaths(markdownPathsFrom(process.argv, process.cwd()))
       armEngine(armSmoke(createWindow()), paths, loaded)

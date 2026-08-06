@@ -61,33 +61,11 @@ export function decideExternalChange(input: { kind: ExternalChangeKind; dirty: b
   return { action: 'reload', notice: null, sticky: false }
 }
 
-/** 一次自写的留痕。`mtimeMs` 为 null 表示这次自写是删除（自己删的也不该触发重载）。 */
-export interface SelfWriteRecord {
-  path: string
-  mtimeMs: number | null
-  atMs: number
-}
-
-/**
- * 自写回声必须抑制（纪律 17）。判据是「路径 + 刚写入的 mtime」——
- * 不比内容：比内容要读盘，而这条判定在事件回调的热路径上。
- *
- * TTL 存在的理由是**记录不许长期有效**：同一个 mtime 在几分钟后再出现，
- * 已经不可能是我们那次写的回声了，继续抑制就会漏掉真的外部变更。
- */
-export const SELF_WRITE_TTL_MS = 3_000
-
-export function isSelfWrite(
-  records: readonly SelfWriteRecord[],
-  event: { path: string; mtimeMs: number | null },
-  nowMs: number,
-  ttlMs: number = SELF_WRITE_TTL_MS,
-): boolean {
-  return records.some(
-    (record) =>
-      record.path === event.path && record.mtimeMs === event.mtimeMs && nowMs - record.atMs <= ttlMs,
-  )
-}
+// **自写回声的判据不在这里**：它是 L2 定的共享接缝 `core/fs/self-write.ts`
+// （`createSelfWriteLog`，指纹 = path + mtime + size，claim 消费型，两侧 realpath）。
+// 本文件一度有一份自己的 `isSelfWrite`——那是 L2 未合并期的桩，合并后**必须删掉**：
+// 两份判据并存就等于两张表各挡一半回声，而漏挡的表现是"保存一次自我重载一次"。
+// 一条纪律一种手段（002 §6.1）。
 
 /** 一个文件的身份印记。对账只比这两个数——比内容要读全文，切窗口时太贵。 */
 export interface FileStamp {

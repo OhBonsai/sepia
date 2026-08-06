@@ -4,14 +4,22 @@ import { dirname, extname, isAbsolute, join } from 'node:path'
 import type { IoResult } from '@sepia/core'
 
 import { atomicWrite } from './fsio.ts'
-import { noteSelfWrite } from './self-writes.ts'
 
 // 文件管理（架构 §4.9）：新建 / 重命名 / 移动 / 删除。**UI 归 b 期**，本期只有服务层
 // 与命令，所以这里的每个函数都得能被单测直接盯住——它们改的是用户的文件。
 //
-// 两条纪律在这里交汇：
-//   纪律 8  新建走 fsio 的 atomicWrite，不自己 writeFile
-//   纪律 17 每个动作都要留自写记录，否则自己的操作会触发一次自我重载
+// 纪律 8：新建走 fsio 的 atomicWrite，不自己 writeFile。
+//
+// **纪律 17（自写不许惊动自己）在这里刻意不落地**，因为落地的方式会是错的：
+// 「最近自写记录」那张表是 L2 的接缝，语义写明 **L3 只 claim、不 record**
+// （`SavePipeline.selfWrites` 是只读口）。L3 往里写就成了两个人记一张表，
+// 而它的判据是 path+mtime+size —— 删除与改名压根给不出这三件套（文件都不在了）。
+//
+// 那这四个动作的回声谁管？**「谁在动手」那一侧**：这些动作全部由 renderer 的命令发起，
+// 成功后 renderer 立刻打开新路径（新建/改名/移动）或清空当前 page（删除），
+// 于是 watcher 的 `currentPage` 在归并窗口（300ms）结束之前就已经改指或作废，
+// 旧路径那条事实自然落地无声。**这条链有单测盯着**（watcher.test.ts 的
+// 「自己改名当前 page → 旧路径的事件被丢掉」），不是靠时序碰运气。
 //
 // **删除走系统回收站**（`shell.trashItem`），不自绘确认对话框（架构 §4.9）。
 // 但 `shell` 是 Electron 的东西，import 它就意味着这个文件再也不能被 vitest 直接跑——
@@ -71,12 +79,6 @@ export async function renamePage(from: unknown, to: unknown): Promise<IoResult<s
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
-  // 一次改名在 watcher 眼里是「旧路径消失 + 新路径出现」两件事，两边都要留痕
-  noteSelfWrite(source.value, null)
-  await stat(target.value).then(
-    (info) => noteSelfWrite(target.value, info.mtimeMs),
-    () => undefined,
-  )
   return { ok: true, value: target.value }
 }
 
@@ -105,6 +107,5 @@ export async function trashPage(path: unknown, trash: TrashFn): Promise<IoResult
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }
-  noteSelfWrite(target.value, null)
   return { ok: true, value: undefined }
 }

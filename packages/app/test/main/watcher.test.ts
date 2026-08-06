@@ -1,13 +1,13 @@
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { FileNotice } from '@sepia/core'
+import { DEFAULT_CONFIG, type FileNotice } from '@sepia/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { atomicWrite } from '../../src/main/services/fsio.ts'
-import { resetSelfWrites } from '../../src/main/services/self-writes.ts'
+import { createSavePipeline, type SavePipeline } from '../../src/main/services/save-pipeline.ts'
 import {
+  configureWatcher,
   forceDegrade,
   onFileNotice,
   reconcile,
@@ -23,8 +23,13 @@ import {
 // tmp+rename 是一条 change 还是一对 unlink+add、就地写会不会来两条。
 // mock 掉这些，测的就只是我自己写的那个 if，而那正是 002 §1 第 5 层说的空转。
 //
-// 计时：事件经 chokidar（默认 atomic 窗口 100ms）+ 本模块归并窗口 120ms 才落地，
+// 计时：事件经 chokidar（默认 atomic 窗口 100ms）+ 本模块归并窗口 300ms 才落地，
 // 所以断言一律用「轮询到出现」或「等够窗口再断言没有」，不写死单次 sleep。
+//
+// **自写那几条走真实的写盘管线**（`createSavePipeline` → `pipeline.write`），不是模拟：
+// 共享接缝的两侧（L2 登记 / L3 claim）要对得上，指纹与 realpath 都得是真的——
+// 桩掉任何一侧，这里验的就只是"我自己写的两个函数互相同意"（002 §6 那条元规则：
+// 桩替被测系统假设掉的那部分，正是检查最容易空转的地方）。
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -34,19 +39,24 @@ const SETTLE_MS = 700
 let dir = ''
 let page = ''
 let notices: FileNotice[] = []
+let pipeline: SavePipeline
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'sepia-watch-'))
   page = join(dir, 'page.md')
   await writeFile(page, 'original\n', 'utf8')
   notices = []
-  resetSelfWrites()
   await resetWatcher()
+  // 真管线 + 真接缝。临时目录不是 git repo，GitService 会优雅降级成"仅写盘无版本"
+  // （160 的设计点），所以这里不会真去 commit。
+  pipeline = createSavePipeline(DEFAULT_CONFIG)
+  configureWatcher({ selfWrites: () => pipeline.selfWrites })
   onFileNotice((notice) => notices.push(notice))
   await watchPage(page)
 })
 
 afterEach(async () => {
+  pipeline.stop()
   await resetWatcher()
   await rm(dir, { recursive: true, force: true })
 })
@@ -109,18 +119,45 @@ describe('外部变更', () => {
   })
 })
 
-describe('纪律 17：自写回声抑制', () => {
-  it('**走 atomicWrite 保存一次 → 零通知**（去掉 mtime 过滤这里必红：保存一次自我重载一次）', async () => {
-    expect((await atomicWrite(page, 'saved by sepia\n')).ok).toBe(true)
+describe('纪律 17：自写回声抑制（真接缝：L2 登记 → L3 claim）', () => {
+  it('**走写盘管线保存一次 → 零通知**（claim 拿掉这里必红：保存一次自我重载一次）', async () => {
+    expect((await pipeline.write(page, 'saved by sepia\n')).ok).toBe(true)
     await sleep(SETTLE_MS)
     expect(notices).toEqual([])
   })
 
+  it('claim 是消费型：一条自写只挡一次——挡完那条记录就不在表里了', async () => {
+    expect((await pipeline.write(page, 'saved by sepia\n')).ok).toBe(true)
+    await sleep(SETTLE_MS)
+    expect(notices).toEqual([])
+    expect(pipeline.selfWrites.size, '记录挡完必须被消费掉，否则同指纹的真外部改动会被永久吞掉').toBe(0)
+  })
+
   it('自写之后紧跟一次真外部改动 → 照样报出来（抑制不许是"一直抑制"）', async () => {
-    expect((await atomicWrite(page, 'saved by sepia\n')).ok).toBe(true)
+    expect((await pipeline.write(page, 'saved by sepia\n')).ok).toBe(true)
     await sleep(SETTLE_MS)
     await writeFile(page, 'and then vim\n', 'utf8')
     expect(await waitForNotice()).toMatchObject({ kind: 'changed', source: 'watcher' })
+  })
+
+  it('连写 20 次 → 一条通知都没有（回声不许漏一次：环形表容量与 TTL 都够）', async () => {
+    for (let index = 0; index < 20; index += 1) {
+      expect((await pipeline.write(page, `round ${index}\n`)).ok).toBe(true)
+    }
+    await sleep(SETTLE_MS)
+    expect(notices, '连续保存漏挡了回声').toEqual([])
+  })
+})
+
+describe('自己动手改的文件', () => {
+  it('自己改名当前 page → 重新指向新路径后，旧路径那条事实落地无声', async () => {
+    // 这是 `services/files.ts` 不往接缝里 record 的前提：动手方在归并窗口结束前
+    // 就把 currentPage 改指了（renderer 成功后立刻打开新路径）。
+    const renamed = join(dir, 'renamed.md')
+    await rename(page, renamed)
+    await watchPage(renamed)
+    await sleep(SETTLE_MS)
+    expect(notices, '旧路径的 removed 漏了出来——用户会看到"文件被删除了"').toEqual([])
   })
 })
 
@@ -143,7 +180,7 @@ describe('focus 对账（架构 §4.9 的兜底半边）', () => {
   })
 
   it('自己保存后刷新印记 → 对账不把自己的保存报成外部变更', async () => {
-    expect((await atomicWrite(page, 'mine\n')).ok).toBe(true)
+    expect((await pipeline.write(page, 'mine\n')).ok).toBe(true)
     await refreshStamp(page)
     notices = []
     await reconcile()

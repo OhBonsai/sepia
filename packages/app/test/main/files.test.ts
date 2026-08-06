@@ -2,12 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { isSelfWrite } from '@sepia/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { findBookRoot, pageContext } from '../../src/main/services/books.ts'
 import { createPage, movePage, renamePage, trashPage } from '../../src/main/services/files.ts'
-import { recentSelfWrites, resetSelfWrites } from '../../src/main/services/self-writes.ts'
 
 // 文件管理的服务层（170 §1.2）。这些函数改的是**用户的文件**，所以每条断言都对着
 // 一种丢字节的方式：覆盖已有文件、改名吃掉目标、删除退化成 unlink。
@@ -15,7 +13,6 @@ import { recentSelfWrites, resetSelfWrites } from '../../src/main/services/self-
 let dir = ''
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'sepia-files-'))
-  resetSelfWrites()
 })
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
@@ -74,16 +71,9 @@ describe('重命名与移动', () => {
     expect(await readFile(join(into, 'a.md'), 'utf8')).toBe('A')
   })
 
-  it('纪律 17：改名两端都留自写记录，否则 watcher 会把自己的操作当外部删除+新增', async () => {
-    const from = join(dir, 'a.md')
-    await writeFile(from, 'A', 'utf8')
-    const to = join(dir, 'b.md')
-    await renamePage(from, to)
-    const now = Date.now()
-    expect(isSelfWrite(recentSelfWrites(), { path: from, mtimeMs: null }, now), '旧路径消失没留痕').toBe(true)
-    const info = await stat(to)
-    expect(isSelfWrite(recentSelfWrites(), { path: to, mtimeMs: info.mtimeMs }, now), '新路径出现没留痕').toBe(true)
-  })
+  // **这里刻意没有「留自写记录」那条用例**：自写记录表是 L2 的接缝（只 claim 不 record），
+  // 而删除/改名给不出它要的 path+mtime+size 三件套。这四个动作的回声由"谁在动手"那侧收尾，
+  // 检查在 watcher.test.ts 的「自己改名当前 page → 旧路径的事件被丢掉」。见 files.ts 的长注释。
 })
 
 describe('删除', () => {

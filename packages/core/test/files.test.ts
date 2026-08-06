@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  SELF_WRITE_TTL_MS,
-  decideExternalChange,
-  isSelfWrite,
-  reconcileKind,
-  type SelfWriteRecord,
-} from '../src/files/index.ts'
+import { decideExternalChange, reconcileKind } from '../src/files/index.ts'
 
 // 170 §1.4 检查 1：脏 × 外部改 × 删除的四格矩阵。
 // 破坏方式（预写）：把「有脏 + changed」判成 reload —— 那正是覆盖用户字节的那个场景。
@@ -51,36 +45,8 @@ describe('冲突判定矩阵（架构 §4.9）', () => {
   })
 })
 
-const record = (over: Partial<SelfWriteRecord> = {}): SelfWriteRecord => ({
-  path: '/book/page.md',
-  mtimeMs: 1_000,
-  atMs: 10_000,
-  ...over,
-})
-
-describe('自写回声的判定（纪律 17 的纯函数半边）', () => {
-  it('路径与 mtime 都对上、且在 TTL 内 → 是自写回声', () => {
-    expect(isSelfWrite([record()], { path: '/book/page.md', mtimeMs: 1_000 }, 10_500)).toBe(true)
-  })
-
-  it('mtime 不同 → 不是回声（同一个文件真被外部改了）', () => {
-    expect(isSelfWrite([record()], { path: '/book/page.md', mtimeMs: 1_001 }, 10_500)).toBe(false)
-  })
-
-  it('路径不同 → 不是回声', () => {
-    expect(isSelfWrite([record()], { path: '/book/other.md', mtimeMs: 1_000 }, 10_500)).toBe(false)
-  })
-
-  it('超过 TTL → 记录失效，必须重新当成外部变更', () => {
-    expect(isSelfWrite([record()], { path: '/book/page.md', mtimeMs: 1_000 }, 10_000 + SELF_WRITE_TTL_MS + 1)).toBe(
-      false,
-    )
-  })
-
-  it('自己删的也算自写（mtime 双方都是 null）', () => {
-    expect(isSelfWrite([record({ mtimeMs: null })], { path: '/book/page.md', mtimeMs: null }, 10_100)).toBe(true)
-  })
-})
+// 自写回声的判据（`createSelfWriteLog`）是 L2 的接缝，单测在 core/test/self-write.test.ts。
+// 本文件曾有一份桩的用例，合并后随桩一起删——两份判据不许并存。
 
 describe('focus 对账（架构 §4.9 的兜底半边）', () => {
   it('没有印记时不许报变更——否则每次切回窗口都重载一遍', () => {
