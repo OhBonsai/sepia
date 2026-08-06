@@ -1,7 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { markupReport, type EngineStatus, type MarkupRun, type SessionState, t } from '@sepia/core'
+import {
+  createAnchor,
+  markupReport,
+  type EngineStatus,
+  type MarkupRun,
+  type SessionState,
+  type Thread,
+  type ThreadView,
+  t,
+} from '@sepia/core'
 import {
   type MountedEditor,
   type SearchApi,
@@ -21,6 +30,8 @@ import { nearbyBlocks } from '../markup/nearby.ts'
 // Stage 2 的 KaTeX 教训原样适用。构建产物里它是独立 chunk，冷启动一个字节都不多。
 const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.tsx')).MarkupPanel }))
 import { createAutosave, type Autosave } from '../services/autosave.ts'
+import { createThreadStore, type ThreadStore } from '../threads/index.ts'
+import { ThreadPanel } from '../threads/panel.tsx'
 import { registerCommand } from '../commands/registry.ts'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
@@ -58,6 +69,10 @@ export function App(): React.JSX.Element {
   // 与 `.sepia-error` 那条横幅并存：横幅说"这次没存上"，警示点说"现在还没存上"。
   const [saveWarning, setSaveWarning] = useState(false)
   const autosave = useRef<Autosave | null>(null)
+  // Stage 5b：线程与徽章。**去向是算出来的**（core 的 placeThreads），这里只存算完的结果。
+  const threadStore = useRef<ThreadStore | null>(null)
+  const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
+  const [panelOpen, setPanelOpen] = useState(false)
 
   // markup 浮层（Stage 4）。range 与 snapshot 是 CAS 的两半，同生同灭。
   const editor = useRef<MountedEditor | null>(null)
@@ -115,22 +130,26 @@ export function App(): React.JSX.Element {
     setStatus('ready')
   }, [])
 
-  const save = useCallback(async (): Promise<void> => {
-    if (!page) return
+  const save = useCallback(
+    async (options: { markupPair?: boolean } = {}): Promise<{ before: string; after: string } | null> => {
+    if (!page) return null
     const content = writeFidelity(draft.current, page.fidelity)
-    const written = await api.writeFile(page.path, content)
+    const written = await api.writeFile(page.path, content, options)
     // 失败必须可见，不许静默、不许假装成功（120 §1.3）。重试归 Stage 7。
     if (!written.ok) {
       setError(t('error.save.failed'))
       setSaveWarning(true)
-      return
+      return null
     }
     // 写成功了就把在飞的自动写盘作废——否则刚 ⌘S 完，防抖还会再写一遍同样的内容
     autosave.current?.cancel()
     setDirty(false)
     setError(null)
     setSaveWarning(false)
-  }, [page])
+    return written.value.commits
+  },
+    [page],
+  )
 
   // 自动写盘（架构 §4.2 写盘时间线）。挂在这里、逻辑在 `services/autosave.ts`——
   // 冻结令期间 App.tsx 只允许长出这一处接线（160 §1.1〇-2 的豁口）。
@@ -143,6 +162,29 @@ export function App(): React.JSX.Element {
       autosave.current = null
     }
   }, [page, save])
+
+  // 线程仓：随 page 建、随 page 拆。**四个重算入口共用一个算法**——
+  // 打开、正文变、外部变更、新增，都是"按当前正文重算一遍去向"。
+  useEffect(() => {
+    if (!page) return undefined
+    const directory = page.path.slice(0, page.path.lastIndexOf('/'))
+    const store = createThreadStore({
+      directory,
+      onChange: (view) => {
+        setThreadView(view)
+        // 徽章传全量：算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug
+        editor.current?.showBadges(view.badges.map((it) => ({ id: it.thread.id, to: it.range?.to ?? 0 })))
+      },
+    })
+    threadStore.current = store
+    store.refreshNow(page.body)
+    return () => {
+      store.dispose()
+      threadStore.current = null
+      setThreadView({ badges: [], orphans: [] })
+      setPanelOpen(false)
+    }
+  }, [page])
 
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
@@ -239,9 +281,32 @@ export function App(): React.JSX.Element {
       }
       setError(null)
       // 落笔后**立即写盘**，不等 800ms 防抖（150 §1.2）——刚落的笔不该只活在内存里
-      draft.current = instance.read()
+      const next = instance.read()
+      draft.current = next
       setDirty(true)
-      void save()
+
+      // ── 徽章 UI 先行（§2.2：UI 先行 300ms，链后台）────────────────────
+      // 线程此刻就建，`commits` 先留空：**对话是纸上真发生过的事**，
+      // git 记没记上是另一回事。链回来了再补两点，补不上就是 diff 不可用。
+      const id = `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+      const from = markup.range.from
+      const thread: Thread = {
+        id,
+        anchor: createAnchor(id, next, { from, to: from + revised.length }),
+        page: page.path,
+        createdAt: Date.now(),
+        turns: [
+          { role: 'user', text: markup.snapshot },
+          { role: 'assistant', text: revised },
+        ],
+        commits: null,
+      }
+      void threadStore.current?.add(thread, next)
+
+      // ── 链在后台：成对 commit 夹住这一次写 ────────────────────────────
+      void save({ markupPair: true }).then((commits) => {
+        if (commits !== null) void threadStore.current?.settleCommits(id, commits, next)
+      })
     },
     [markup, page, save, dismissMarkup],
   )
@@ -255,7 +320,8 @@ export function App(): React.JSX.Element {
 
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
-    registerCommand({ id: 'file.save', title: 'cmd.file.save', key: 'Mod-s', run: save })
+    // `save` 现在会交出成对 commit 的两点（5b），命令层不关心它——丢掉返回值即可
+    registerCommand({ id: 'file.save', title: 'cmd.file.save', key: 'Mod-s', run: () => void save() })
     registerCommand({ id: 'file.open', title: 'cmd.file.open', key: 'Mod-o', run: pick })
     registerCommand({ id: 'edit.find', title: 'cmd.edit.find', key: 'Mod-f', run: () => openSearch('find') })
     registerCommand({
@@ -265,6 +331,18 @@ export function App(): React.JSX.Element {
       run: () => openSearch('replace'),
     })
     registerCommand({ id: 'agent.summon', title: 'cmd.agent.summon', key: 'Mod-k', run: summon })
+    // ⌘⇧H 还白（W10）：全隐 ↔ 全显。**只切显示，线程一条不少**
+    registerCommand({
+      id: 'threads.hide',
+      title: 'cmd.threads.hide',
+      key: 'Mod-Shift-h',
+      run: () => void editor.current?.toggleBadges(),
+    })
+    registerCommand({
+      id: 'threads.panel',
+      title: 'cmd.threads.panel',
+      run: () => setPanelOpen((isOpen) => !isOpen),
+    })
   }, [save, pick, openSearch, summon])
 
   useEffect(() => {
@@ -286,6 +364,10 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'k') {
         event.preventDefault()
         summon()
+      } else if ((event.key === 'h' || event.key === 'H') && event.shiftKey) {
+        // ⌘⇧H 还白（W10）
+        event.preventDefault()
+        editor.current?.toggleBadges()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -301,7 +383,10 @@ export function App(): React.JSX.Element {
   const conflict = useFiles({
     path: page?.path ?? null,
     dirty,
-    save,
+    // 6a 的冲突路径只要"存一次"，不要那两点
+    save: async () => {
+      await save()
+    },
     reload: open,
     position: () => ({ cursor: editor.current?.selection().from ?? 0, scrollTop: sessionDraft.current.scrollTop }),
     onOpen: (next) => void open(next),
@@ -329,6 +414,14 @@ export function App(): React.JSX.Element {
       )}
       {error !== null && <div className="sepia-error">{error}</div>}
       {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
+      {panelOpen && page !== null && (
+        <ThreadPanel
+          view={threadView}
+          directory={page.path.slice(0, page.path.lastIndexOf('/'))}
+          page={page.path}
+          onClose={() => setPanelOpen(false)}
+        />
+      )}
       {markup !== null &&
         page !== null &&
         createPortal(
@@ -409,6 +502,10 @@ export function App(): React.JSX.Element {
             draft.current = next
             setDirty(true)
             autosave.current?.bump()
+            // **撤销联动在这里发生**（T-27）：⌘Z 撤掉落笔，引文就找不着了，
+            // 重算即判孤儿——徽章移出纸面、对话沉进置灰区；⌘⇧Z 自然回来。
+            // 没有任何 undo 钩子，锚点机制本身就是它的实现。
+            threadStore.current?.refresh(next)
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor

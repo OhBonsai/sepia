@@ -39,7 +39,9 @@ const api = {
   file: {
     read: (path: string) => ipcRenderer.invoke('file/read', path),
     /** ⌘S 全文保存专用。Stage 4 的落笔走独立的区间写通道，不许复用这条。 */
-    write: (path: string, content: string) => ipcRenderer.invoke('file/write', path, content),
+    /** `options.markupPair` = 用成对 commit 夹住这次写（5b 落笔链）。**不是新 key**。 */
+    write: (path: string, content: string, options?: { markupPair?: boolean }) =>
+      ipcRenderer.invoke('file/write', path, content, options),
   },
   dialog: {
     openMarkdown: () => ipcRenderer.invoke('dialog/open-markdown'),
@@ -59,6 +61,17 @@ const api = {
       ipcRenderer.on('files/external-change', listener)
       return () => ipcRenderer.removeListener('files/external-change', listener)
     },
+  },
+  // threads 域（Stage 5b，160 §2.3 申报值 = 恰好这两项 + git.diff 一项）。
+  // **没有 delete**：删除是 save 一份不含它的表——少一个通道少一处不变量。
+  threads: {
+    load: (directory: string) => ipcRenderer.invoke('threads/load', directory),
+    save: (directory: string, threads: unknown[]) => ipcRenderer.invoke('threads/save', directory, threads),
+  },
+  // 徽章的 diff 从 git 取（D-08），renderer 不存第二份正文。**只读，没有写路径**。
+  git: {
+    diff: (directory: string, before: string, after: string, page: string) =>
+      ipcRenderer.invoke('git/diff', directory, before, after, page),
   },
   session: {
     get: () => ipcRenderer.invoke('session/get'),

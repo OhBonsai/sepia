@@ -13,6 +13,7 @@ export {
   type MountedEditor,
 } from './base.ts'
 export { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
+export { badgeExtension, badgesHidden, setBadges, setBadgesHidden, type BadgeSpot } from './extensions/badges.ts'
 export {
   applyMarkup,
   markupPlan,
