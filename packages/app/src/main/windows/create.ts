@@ -15,15 +15,20 @@ import * as registry from './registry.ts'
 // 与 `theme.setMode()` 同一个模式：启动时设一次，`createWindow` 从模块状态读——
 // 而不是让每个调用点都去拿配置。重新激活（dock 点击、第二扇窗）那几条路径
 // 手上没有 config，改成传参就得把它一路穿过去。
-let markupConfig: Pick<AppConfig, 'contextScope' | 'contextBudgetTokens'> = DEFAULT_CONFIG
+let markupConfig: Pick<AppConfig, 'contextScope' | 'contextBudgetTokens' | 'autosaveDebounceMs'> = DEFAULT_CONFIG
 
 export function setMarkupConfig(config: AppConfig): void {
   markupConfig = config
 }
 
-/** markup 配置搭 argv 班车的编码：`scope,budget`。两个值，不值得上 JSON。 */
+/**
+ * 渲染层要用的几个配置值，搭 argv 班车：`scope,budget,autosaveMs`。
+ * 三个值仍不值得上 JSON，也仍**不值得在桥上开 key**——它们开机即定死
+ * （MVP 没有设置 UI，改 config.json 本来就要重启），够不上一个永久暴露面。
+ */
 function markupParams(): string {
-  return `${markupConfig.contextScope},${markupConfig.contextBudgetTokens}`
+  const { contextScope, contextBudgetTokens, autosaveDebounceMs } = markupConfig
+  return `${contextScope},${contextBudgetTokens},${autosaveDebounceMs}`
 }
 
 export function createWindow(): BrowserWindow {

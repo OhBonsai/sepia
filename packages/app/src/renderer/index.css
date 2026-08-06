@@ -40,6 +40,19 @@ body {
   border-bottom: 1px solid var(--sepia-rule);
 }
 
+/* 纸角持久警示点（架构 §4.2）：写盘失败时亮起，**恢复即消**。
+   一个点的存在感——它要的是"你该知道"，不是"你必须现在处理"。 */
+.sepia-save-warning {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sepia-danger);
+  pointer-events: none;
+}
+
 /* W12：Agent 缺席的**细提示线**——一条线的存在感，不弹窗、不占版面。 */
 .sepia-agent-line {
   padding: 2px 16px;

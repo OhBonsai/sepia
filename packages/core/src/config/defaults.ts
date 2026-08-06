@@ -17,9 +17,18 @@ export const DEFAULT_CONFIG: AppConfig = {
   contextScope: 'page',
   contextBudgetTokens: 6_000,
   sessionPrewarm: 1,
+  autosaveDebounceMs: 800,
+  commitIdleMs: 8_000,
+  commitIntervalMs: 300_000,
+  anchorFuzzyThreshold: 0.75,
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
+
+/** 0–1 之间的小数才收。**0 与 1 都不收**：0 = 什么都能匹配（必误挂），1 = 只认逐字相同。 */
+function ratio(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value < 1 ? value : fallback
+}
 
 /** 正整数才收；0、负数、小数、NaN 一律退回默认值——坏配置不该让应用行为变怪。 */
 function positiveInt(value: unknown, fallback: number): number {
@@ -53,6 +62,10 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'contextScope',
     'contextBudgetTokens',
     'sessionPrewarm',
+    'autosaveDebounceMs',
+    'commitIdleMs',
+    'commitIntervalMs',
+    'anchorFuzzyThreshold',
   ])
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
@@ -73,6 +86,11 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
           : DEFAULT_CONFIG.contextScope,
       contextBudgetTokens: positiveInt(raw['contextBudgetTokens'], DEFAULT_CONFIG.contextBudgetTokens),
       sessionPrewarm: positiveInt(raw['sessionPrewarm'], DEFAULT_CONFIG.sessionPrewarm),
+      autosaveDebounceMs: positiveInt(raw['autosaveDebounceMs'], DEFAULT_CONFIG.autosaveDebounceMs),
+      commitIdleMs: positiveInt(raw['commitIdleMs'], DEFAULT_CONFIG.commitIdleMs),
+      commitIntervalMs: positiveInt(raw['commitIntervalMs'], DEFAULT_CONFIG.commitIntervalMs),
+      // 相似度是 0–1 的小数，positiveInt 收不了它——单独一条：范围外一律退回默认
+      anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
     },
     unknown: preserved,
   }
@@ -92,6 +110,12 @@ export function configToDisk(
     out['contextBudgetTokens'] = config.contextBudgetTokens
   }
   if (config.sessionPrewarm !== DEFAULT_CONFIG.sessionPrewarm) out['sessionPrewarm'] = config.sessionPrewarm
+  if (config.autosaveDebounceMs !== DEFAULT_CONFIG.autosaveDebounceMs) out['autosaveDebounceMs'] = config.autosaveDebounceMs
+  if (config.commitIdleMs !== DEFAULT_CONFIG.commitIdleMs) out['commitIdleMs'] = config.commitIdleMs
+  if (config.commitIntervalMs !== DEFAULT_CONFIG.commitIntervalMs) out['commitIntervalMs'] = config.commitIntervalMs
+  if (config.anchorFuzzyThreshold !== DEFAULT_CONFIG.anchorFuzzyThreshold) {
+    out['anchorFuzzyThreshold'] = config.anchorFuzzyThreshold
+  }
   return out
 }
 
