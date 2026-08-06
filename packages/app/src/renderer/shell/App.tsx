@@ -331,16 +331,28 @@ export function App(): React.JSX.Element {
       const imported = await api.importImage(file.name || 'image.png', bytes, book)
       if (!imported.ok) continue
       const at = instance.selection().from
+      // **图片必须自成一行**，两个理由缺一不可：
+      //   1. 落在别人行中间会把那行的语义搅了——真人轮实测：光标在 `# 标题` 行首时
+      //      插进去，正文变成 `![](img/…)# 访问控制管理办法`，标题当场废掉
+      //   2. C 类块级 widget 只认独占一行的图片；夹在文字里渲不出预览（130 §C）
+      // 换行用**这一页自己的换行符**，不是硬编码 '\n'——CRLF 文件掺一个 LF
+      // 就是"未触及的字节"之外多出的一处改写（不变量 2 的精神）。
+      const eol = page?.fidelity.lineEnding ?? '\n'
+      const head = at === 0 || instance.slice(at - 1, at) === '\n' ? '' : eol
+      const tailChar = instance.slice(at, at + 1)
+      const tail = tailChar === '' || tailChar === '\n' || tailChar === '\r' ? '' : eol
       instance.replaceGuarded({
         range: { from: at, to: at },
         expectedText: '',
-        replacement: `![](${imported.value})`,
+        replacement: `${head}![](${imported.value})${tail}`,
       })
     }
     draft.current = instance.read()
     setDirty(true)
     autosave.current?.bump()
-  }, [])
+    // `page` 必须进依赖：其余取值都走 ref，只有换行符来自 state——
+    // 空依赖数组会让它永远停在第一张纸的换行符上
+  }, [page])
 
   // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
   useEffect(() => {

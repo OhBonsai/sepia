@@ -421,3 +421,94 @@ test('#8c 最近里指向已删除的文件 → 报错但**不留一个开不出
   // **tab 收回去了**：留着一个 tab 在、纸是空的、红字挂着，比什么都没发生更糟
   await expect(win.locator('.sepia-tab'), '留下了一个开不出内容的 tab').toHaveCount(0)
 })
+
+test('#10d 收进来的图**自成一行**：不许挤进别人行里', async () => {
+  const fixture = await makeBook()
+  await writeFile(join(fixture.book, 'a.md'), '# 访问控制管理办法\n\n正文。\n', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+  await win.locator('.cm-content').click()
+  // 光标停在标题行**行首**——真人轮出事的正是这个位置
+  await win.keyboard.press('Meta+ArrowUp')
+  await fireImageEvent(win, 'paste', 'shot.png')
+
+  await expect.poll(async () => readFile(join(fixture.book, 'a.md'), 'utf8').catch(() => ''), {
+    timeout: 10_000,
+  }).toContain('](img/')
+  // 真人轮的事故形态：`![](img/…)# 访问控制管理办法` —— 标题当场废掉
+  const text = await win.evaluate(
+    () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
+  )
+  expect(text, '图片挤进标题行了').not.toMatch(/\)[^\n]*访问控制/)
+  const doc = await win.evaluate(() => {
+    const cm = document.querySelector('.cm-content')
+    return cm === null ? '' : (cm as HTMLElement).innerText
+  })
+  expect(doc).toContain('访问控制管理办法')
+
+  // 另一半：光标停在**一行文字的末尾**。这一半与上面那一半是两条独立的补换行，
+  // 只测一头会让另一头永远绿着（本次反向验证当场撞到：破坏 head 时 #10d 照绿，
+  // 因为行首那个场景根本走不到 head）。
+  // 必须落在**一行有字的行尾**：`Meta+ArrowDown` 会走到全文末尾（前一个字符已经是
+  // 换行），那条路根本走不到 head——第一版就是这么写的，破坏 head 时照绿
+  await win.getByText('正文。').click()
+  await win.keyboard.press('Meta+ArrowRight')
+  await fireImageEvent(win, 'paste', 'second.png')
+  await expect.poll(async () => {
+    const names = await (await import('node:fs/promises')).readdir(join(fixture.book, 'img'))
+    return names.length
+  }, { timeout: 10_000 }).toBe(2)
+  const after = await win.evaluate(
+    () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
+  )
+  // `[^\n]` 而不是 `\s`：`\s` 把换行也算进去，于是"图片在下一行"也会被判成"同一行"——
+  // 这条断言本身第一次就是这么写错的，对着正确实现红了才发现
+  expect(after, '图片粘在"正文。"后面同一行了').not.toMatch(/正文。[^\n]*\[/)
+})
+
+test('#10e 图片预览**真的画出了像素**（不是只挂了个 <img> 标签）', async () => {
+  const fixture = await makeBook()
+  await mkdir(join(fixture.book, 'img'), { recursive: true })
+  // 一张 2x2 的真 PNG——尺寸小但**非零**，这正是要断言的东西
+  await writeFile(
+    join(fixture.book, 'img', 'x.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8BQz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC',
+      'base64',
+    ),
+  )
+  await writeFile(join(fixture.book, 'a.md'), '# 标题\n\n![](img/x.png)\n\n尾巴\n', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+
+  // `toBeVisible()` 在这儿是**没用的**：一个 src 解析失败的 <img> 照样"可见"，
+  // 只是宽高为 0。要判"用户看得见"，只有量真实解码尺寸（002 §6.2 第二条元规则）。
+  await expect
+    .poll(
+      async () =>
+        win.evaluate(() => {
+          const img = document.querySelector('.sepia-image img') as HTMLImageElement | null
+          if (img === null) return { w: -1, natural: -1 }
+          const rect = img.getBoundingClientRect()
+          return { w: Math.round(rect.width), natural: img.naturalWidth }
+        }),
+      { timeout: 10_000 },
+    )
+    .toEqual({ w: 2, natural: 2 })
+
+  // 源码被替换掉了才叫预览——正文里不该再出现 `![](`
+  const shown = await win.evaluate(
+    () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
+  )
+  expect(shown, '还在显示源码，widget 没接管').not.toContain('![](')
+})
