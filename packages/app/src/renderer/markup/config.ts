@@ -3,7 +3,7 @@ import { DEFAULT_CONFIG, type AppConfig } from '@sepia/core'
 // markup 的两个配置项，由 main 经 argv → 根节点属性交过来（见 preload/index.ts）。
 // **不经 window.api**，所以纪律 1 不适用——这里读的是 DOM，不是桥。
 
-type MarkupConfig = Pick<AppConfig, 'contextScope' | 'contextBudgetTokens'>
+type MarkupConfig = Pick<AppConfig, 'contextScope' | 'contextBudgetTokens' | 'autosaveDebounceMs'>
 
 /**
  * 读一次就定死。属性缺失或形状不对一律退回默认值——
@@ -12,11 +12,16 @@ type MarkupConfig = Pick<AppConfig, 'contextScope' | 'contextBudgetTokens'>
 export function markupConfig(): MarkupConfig {
   const raw = document.documentElement.getAttribute('data-sepia-markup')
   if (raw === null) return DEFAULT_CONFIG
-  const [scope, budget] = raw.split(',')
-  const parsed = Number(budget)
+  const [scope, budget, autosave] = raw.split(',')
+  const parsedBudget = Number(budget)
+  const parsedAutosave = Number(autosave)
   return {
     contextScope: scope === 'selection' ? 'selection' : DEFAULT_CONFIG.contextScope,
     contextBudgetTokens:
-      Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_CONFIG.contextBudgetTokens,
+      Number.isInteger(parsedBudget) && parsedBudget > 0 ? parsedBudget : DEFAULT_CONFIG.contextBudgetTokens,
+    autosaveDebounceMs:
+      Number.isInteger(parsedAutosave) && parsedAutosave > 0
+        ? parsedAutosave
+        : DEFAULT_CONFIG.autosaveDebounceMs,
   }
 }

@@ -138,11 +138,16 @@ test('a4 真引擎全链：⌘K → 只唤起改写 agent → diff → 落笔', 
   say(`落笔后文件：${JSON.stringify(fileAfter)}`)
   say('=== 证据完 ===')
 
-  // ── 判据一：只唤起改写 agent ──────────────────────────────────────────
-  // `agent=title` 会另有一次（引擎拿 small model 给会话取名，不是 markup 这一发），
-  // 所以判的是 rewrite 恰好一次 + build 一次都没有，**不是**「只有一条 stream 行」。
+  // ── 判据一：**整轮只有改写那一发** ────────────────────────────────────
+  // Stage 5a 关掉自动取标题（`title: { disable: true }`）之后，这里从「rewrite 恰好一次」
+  // 加严成「**stream 行总共就一条**」——`agent=title` 那次白跑的 small model 调用没了。
   expect(streamLines.filter((line) => /agent=rewrite/.test(line)).length, 'rewrite 不是恰好一发').toBe(1)
   expect(streamLines.some((line) => /agent=build/.test(line)), 'markup 落到了 build agent').toBe(false)
+  expect(
+    streamLines.some((line) => /agent=title/.test(line)),
+    '引擎又去自动取标题了——`title: { disable: true }` 没生效（150 债 5）',
+  ).toBe(false)
+  expect(streamLines.length, `整轮该只有改写一发，实际 ${streamLines.length} 条 stream`).toBe(1)
 
   // ── 判据二：没进 agentic loop、没动工具 ───────────────────────────────
   // **不判「日志里有没有 shell tool / ripgrep 字样」**：那是引擎起来时的工具注册与

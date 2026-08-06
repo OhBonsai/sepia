@@ -19,6 +19,7 @@ import { nearbyBlocks } from '../markup/nearby.ts'
 // 它连着 remend 与 Shiki，静态 import 会把它们全部拖进启动 bundle——
 // Stage 2 的 KaTeX 教训原样适用。构建产物里它是独立 chunk，冷启动一个字节都不多。
 const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.tsx')).MarkupPanel }))
+import { createAutosave, type Autosave } from '../services/autosave.ts'
 import { registerCommand } from '../commands/registry.ts'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
@@ -52,6 +53,10 @@ export function App(): React.JSX.Element {
   const [kHint, setKHint] = useState<string | null>(null)
   const kHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const draft = useRef<string>('')
+  // 纸角持久警示点（架构 §4.2 写盘失败的表现）：**恢复即消**，所以是状态不是一次性提示。
+  // 与 `.sepia-error` 那条横幅并存：横幅说"这次没存上"，警示点说"现在还没存上"。
+  const [saveWarning, setSaveWarning] = useState(false)
+  const autosave = useRef<Autosave | null>(null)
 
   // markup 浮层（Stage 4）。range 与 snapshot 是 CAS 的两半，同生同灭。
   const editor = useRef<MountedEditor | null>(null)
@@ -116,11 +121,27 @@ export function App(): React.JSX.Element {
     // 失败必须可见，不许静默、不许假装成功（120 §1.3）。重试归 Stage 7。
     if (!written.ok) {
       setError(t('error.save.failed'))
+      setSaveWarning(true)
       return
     }
+    // 写成功了就把在飞的自动写盘作废——否则刚 ⌘S 完，防抖还会再写一遍同样的内容
+    autosave.current?.cancel()
     setDirty(false)
     setError(null)
+    setSaveWarning(false)
   }, [page])
+
+  // 自动写盘（架构 §4.2 写盘时间线）。挂在这里、逻辑在 `services/autosave.ts`——
+  // 冻结令期间 App.tsx 只允许长出这一处接线（160 §1.1〇-2 的豁口）。
+  useEffect(() => {
+    if (!page) return undefined
+    const instance = createAutosave({ delayMs: markupConfig().autosaveDebounceMs, save: () => void save() })
+    autosave.current = instance
+    return () => {
+      instance.dispose()
+      autosave.current = null
+    }
+  }, [page, save])
 
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
@@ -285,6 +306,7 @@ export function App(): React.JSX.Element {
       )}
       {kHint !== null && <div className="sepia-agent-hint">{kHint}</div>}
       {error !== null && <div className="sepia-error">{error}</div>}
+      {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
       {markup !== null &&
         page !== null &&
         createPortal(
@@ -364,6 +386,7 @@ export function App(): React.JSX.Element {
           onChange={(next) => {
             draft.current = next
             setDirty(true)
+            autosave.current?.bump()
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor

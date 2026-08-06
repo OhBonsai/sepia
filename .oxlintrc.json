@@ -21,7 +21,7 @@
   "rules": {
     "no-console": "error",
     // 测试探针（decorate.ts 的构建计数器）需要一个全局名，双下划线是"内部探针"的显式标记
-    "no-underscore-dangle": ["error", { "allow": ["__sepiaDecorateBuilds"] }],
+    "no-underscore-dangle": ["error", { "allow": ["__sepiaDecorateBuilds", "__sepiaAutosave"] }],
     "eqeqeq": "error",
     "no-var": "error",
     "prefer-const": "error",

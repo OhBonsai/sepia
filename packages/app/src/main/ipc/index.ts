@@ -4,10 +4,18 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 
 import type { TextPartInput } from '@sepia/agent'
 import { TASKS, type TaskType } from '@sepia/agent/tasks'
-import { asBookDirectory, type BookDirectory, type IoResult, type PerfMark, type SessionState } from '@sepia/core'
+import {
+  asBookDirectory,
+  type AppConfig,
+  type BookDirectory,
+  type IoResult,
+  type PerfMark,
+  type SessionState,
+} from '@sepia/core'
 
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
+import { createSavePipeline, type SavePipeline } from '../services/save-pipeline.ts'
 import { mark, printReport, report } from '../services/perf.ts'
 import * as supervisor from '../services/agent-supervisor.ts'
 import * as theme from '../services/theme.ts'
@@ -32,7 +40,25 @@ function taskOf(value: unknown): TaskType | null {
   return typeof value === 'string' && Object.hasOwn(TASKS, value) ? (value as TaskType) : null
 }
 
-export function registerIpc(paths: SepiaPaths): void {
+/**
+ * 写盘管线（架构 §4.2）。**模块级单例**：自写记录与 commit 触发器都是有状态的，
+ * 每次调用现建一个就等于每次写盘都换一份记录表——L3 的回声抑制会永远 claim 不中。
+ */
+let pipeline: SavePipeline | null = null
+
+/** L3（Stage 6a watcher）的消费口。共享接缝，**只读**：只 claim，不 record。 */
+export function savePipeline(): SavePipeline | null {
+  return pipeline
+}
+
+/** 退出前停掉兜底计时（见 main/index.ts 的 before-quit）。 */
+export function stopSavePipeline(): void {
+  pipeline?.stop()
+  pipeline = null
+}
+
+export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
+  pipeline = createSavePipeline(config)
   ipcMain.handle('file/read', async (_event, path: unknown): Promise<IoResult<string>> => {
     if (typeof path !== 'string' || !isAbsolute(path)) {
       return { ok: false, reason: 'path must be absolute' }
@@ -49,7 +75,9 @@ export function registerIpc(paths: SepiaPaths): void {
       return { ok: false, reason: 'path must be absolute' }
     }
     if (typeof content !== 'string') return { ok: false, reason: 'content must be a string' }
-    return atomicWrite(path, content)
+    // 走管线而不是直接 atomicWrite：写盘成功之后还有两件事——登记自写（共享接缝）、
+    // 拨动 commit 触发。**renderer 对这两件事一无所知**，它只知道自己保存了一次。
+    return pipeline === null ? atomicWrite(path, content) : pipeline.write(path, content)
   })
 
   ipcMain.handle('dialog/open-markdown', async (event): Promise<string | null> => {

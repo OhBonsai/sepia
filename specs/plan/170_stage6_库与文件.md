@@ -33,8 +33,39 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L3**，与 **
 1. **合并顺序：L2 先合，L3 rebase**——保存管线是回声抑制的上游。
 2. **shell 冻结令继续**：不碰 `App.tsx` / `EditorHost` / session schema / renderer editor 区。
    renderer 侧只允许**冲突提示横条**一处点状 UI（复用 Stage 3 提示线模式；完整选择 UI 归 b 期）。
-3. **唯一共享接缝**：L2 的「最近自写记录」（path + mtime，main 侧内部接口）→ 本期回声抑制
-   消费。接口形状 L2 定，本期只读。**L2 未合并前先用本地桩开发，rebase 后换实体。**
+3. **唯一共享接缝——已定型（2026-08-06，L2 定，两份 plan 同文）**：
+   `@sepia/core` 的 `createSelfWriteLog()`（`core/src/fs/self-write.ts`，**纯逻辑、无 fs、无 Electron**）。
+   L2 的写盘管线在**写成功之后** `record`，L3 的回声抑制在 watcher 事件到达时 `claim`。
+
+   ```ts
+   interface SelfWriteEntry {
+     path: string      // 绝对路径，**必须 realpath**（见下）
+     mtimeMs: number   // 写完后 stat 到的
+     size: number      // 写完后的字节数
+   }
+   interface SelfWriteLog {
+     record(entry: SelfWriteEntry): void      // 写盘成功后登记（失败的写不登记：盘上没变化，就不会有回声）
+     claim(entry: SelfWriteEntry): boolean    // 是自写吗？**命中即消费**
+     readonly size: number                    // 在册条数（诊断/测试用）
+   }
+   createSelfWriteLog(options?: { capacity?: number; ttlMs?: number; now?: () => number }): SelfWriteLog
+   // 默认 capacity 64、ttlMs 5000、now = Date.now
+   ```
+
+   四条语义是**接缝的实质**，两侧都按它写才对得齐：
+
+   - **`claim` 是消费型，不是纯查询**。一条自写只挡一次回声。不消费的话，一个恰好同指纹的
+     真外部改动会被永久吞掉；消费掉，最坏只误吞一次。取舍同锚点的「宁可孤儿不误挂」。
+   - **`path` 两侧都要 realpath**。macOS 的 `/var` 是 `/private/var` 的符号链接，同一个文件
+     两侧拿到的字符串能完全不同——Stage 4 的 a4 装置就在这上面栽过一次。
+   - **指纹是 path + mtime + size，不是内容哈希**。哈希要为每次保存把内容再读一遍算一遍；
+     漏网场景（窗口内、同路径、mtime 与字节数同时撞上的**真**外部改动）少到可忽略，
+     且消费型语义把代价封顶在"误吞一次"。
+   - **过期即放行**（默认 5s）。回声是毫秒级到的；更晚的同指纹变更更可能是真改动。
+
+   **状态**：纯模块 + 7 条单测已随 L2 落地（`packages/core/test/self-write.test.ts`，
+   两条破坏——不消费、指纹去掉 size——均实证必红）。**L3 现在就能 import 真类型**，
+   不必等 L2 的写盘管线合并；要跑通链路再用本地桩接 `record` 那一侧。
 4. 共享注册表仅追加；`bun.lock` 冲突以重新 `bun install` 为准。
 
 ### 一、Stage 4 的 DoD 达成情况

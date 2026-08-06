@@ -20,3 +20,4 @@ packages/app/engine/
 # 本机工具的临时目录（agent 会话续跑状态、随手截图），与项目产物无关
 .omo/
 .rv6/
+.rva/

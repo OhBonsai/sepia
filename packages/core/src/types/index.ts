@@ -35,6 +35,17 @@ export interface AppConfig {
   contextBudgetTokens: number
   /** session 预热池大小（T-32）。引擎就绪时预建这么多个空 session。 */
   sessionPrewarm: number
+  /** 停止输入多久自动写盘（架构 §4.2 写盘时间线）。⌘S 仍是即时的，不受它影响。 */
+  autosaveDebounceMs: number
+  /**
+   * 静默多久提交一次（架构 §4.2 三触发之一）。**必须比 `autosaveDebounceMs` 大一个量级**——
+   * 它等的是"这一阵子写完了"，不是"这一句写完了"。
+   */
+  commitIdleMs: number
+  /** 定时兜底提交间隔。与静默取先到者。 */
+  commitIntervalMs: number
+  /** 锚点模糊匹配的相似度下限。调低即更容易误挂（架构 §4.2「宁可孤儿不误挂」）。 */
+  anchorFuzzyThreshold: number
 }
 
 /**

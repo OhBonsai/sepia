@@ -7,7 +7,7 @@ import { homedir } from 'node:os'
 import { app, BrowserWindow } from 'electron'
 
 import { markdownPathsFrom, queuePaths, takePendingPaths } from './argv.ts'
-import { broadcastAgent, broadcastTheme, registerIpc } from './ipc/index.ts'
+import { broadcastAgent, broadcastTheme, registerIpc, stopSavePipeline } from './ipc/index.ts'
 import { startEngine, stopEngine } from './services/agent-supervisor.ts'
 import { loadConfig, saveConfig, type LoadedConfig } from './services/config.ts'
 import { loadCredentials } from './services/credentials.ts'
@@ -137,7 +137,7 @@ if (!app.requestSingleInstanceLock()) {
       theme.setMode(loaded.config.theme)
       setMarkupConfig(loaded.config)
 
-      registerIpc(paths)
+      registerIpc(paths, loaded.config)
       broadcastTheme()
       broadcastAgent()
 
@@ -147,6 +147,10 @@ if (!app.requestSingleInstanceLock()) {
       app.on('before-quit', () => {
         // 不 await：礼貌收尾有 6s 超时兜底强杀（supervisor），quit 不许被引擎拖住
         void stopEngine()
+        // 写盘管线的兜底计时也要停：不停的话，退出途中还可能再拨一次 commit，
+        // 而那时窗口已经没了，git 子进程却还在跑（架构 §4.2：commit 与纸解耦，
+        // 解耦的另一半是"纸没了它也该停"）。
+        stopSavePipeline()
       })
     },
     (error: unknown) => {

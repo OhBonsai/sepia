@@ -172,7 +172,15 @@ function engineConfigContent(credentials: Credentials | null): string {
     share: 'disabled',
     autoupdate: false,
     snapshot: false,
-    agent: agents,
+    agent: {
+      ...agents,
+      // 关掉引擎的**自动取标题**（150 债 5 / 150 §1.9 回流 9）：每轮 markup 除了改写那一发，
+      // 引擎还会拿 small model 白跑一次给会话取标题——而 MVP 根本不显示会话标题。
+      // `disable` 是引擎自己的开关：命中即 `delete agents['title']`，而取标题那段开头就是
+      // `agents.get("title")` 取不到就 return（vendor `session/prompt.ts`）——**整段跳过，
+      // 不是跑完丢掉**。`title` 是 native agent，只能这么关，不能靠不引用它。
+      title: { disable: true },
+    },
     // 双保险的另一半：就算某次 send 忘带 agent，缺省也落在注册表内，不落回 build。
     default_agent: 'rewrite' satisfies keyof typeof TASKS,
     ...(Object.keys(provider).length > 0 ? { provider } : {}),
