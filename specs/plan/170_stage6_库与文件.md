@@ -479,7 +479,7 @@ D3 多 Tab 重启恢复；气质基线绿
 | 3 | **主页两条路 + 最近列表** | 能证按钮在、列表直达；证不了空 book 时它是否让人知道下一步该做什么 |
 | 4 | **`@` 的即时感** | 能证列表出现与插入正确；**证不了"快"**——D2 的 <100ms 要人真敲一次才算数 |
 | 5 | **拖图落盘** | 机器已能造真 `paste`/`drop` 事件（#10/#10b），但**真实 Finder 拖拽手势**仍要人真拖一张进去 |
-| 5b | **人裁：dev 态图片预览要不要现在治** | 预览本身是好的（打包态实测 2×2 像素）；dev 下 Chromium 拒绝 http 源加载 `file://` 子资源。治法是自定义特权 scheme——**新增永久暴露面，且与架构 §464"不引入自定义 scheme"直接冲突**，我不自行处置 |
+| ~~5b~~ | ~~dev 态图片预览~~ | **人裁 2026-08-06：加特权 scheme，dev 态也要看得见** → 已落地，见下 |
 | 6 | **⌘⌫ 删除 → Finder 废纸篓里找到（还 6a 债 A）** | 入口这一半已还（绑了键）；"废纸篓里看得见"仍然只有人能确认（TCC 限制照旧） |
 | 7 | **气质修正后的"纸感"** | 能证无行号、非等宽、版心 760；**证不了它是否真的像一张纸** |
 | 8 | **真实 art/ 打开体感** | DoD D1 的机器面已验（树不挡可写）；真实规模下的体感要人开一次 |
@@ -600,6 +600,44 @@ Chromium 拒绝 http 源加载 `file://` 子资源；打包态走 `loadFile`，�
 > 另记一处**断言自己写错**：`/正文。\s*!?\[/` 里的 `\s` 把换行也算进去，
 > 于是"图片在下一行"也被判成"同一行"，对着**正确实现**红了才发现。
 > 判"同一行"只能用 `[^\n]`。
+
+### 人裁落地（2026-08-06）：`sepia-asset://` 特权 scheme
+
+**裁的是**：dev 态也要看得见图片预览，为此接受新增一个自定义 scheme。
+
+打包态 renderer 走 `loadFile`（file 源），图片给 `file://` URL 能显示；dev 态走
+`loadURL(http://localhost)`，**Chromium 一律拒绝 http 源加载 `file://` 子资源**。
+所以这不是「预览没做」，是「预览在开发时看不见」——Stage 2 就写在
+`widgets/render.ts` 注释里、排期"Stage 6 随文件域一起"的那条债，此刻到期。
+
+**落地形状**（架构 §4.6 已同步）：
+
+| 在哪 | 做什么 |
+|---|---|
+| `core/assets` | URL 怎么拼/拆、路径在不在根里——**纯函数，7 条单测盯着** |
+| `app/services/assets.ts` | ready 前 `registerSchemesAsPrivileged`，ready 后 `protocol.handle` |
+| `ipc` 两处 | `file/read` 登记 page 所在目录、`library/scan` 登记 book 根 |
+| `renderer/index.html` | CSP `img-src` 加 `sepia-asset:` |
+
+**它收窄而非放宽了暴露面**：`file://` 能读到磁盘上任何东西，新 scheme 只放行
+**已登记可读根**之内的文件，且**先 realpath 再判根**（软链绕不过去），
+路径里带 `..` 在解析那一步就拒。
+
+**dev 态实测**（用 vite 起 renderer + Playwright 拉起 main，复现 dev 的真实形状）：
+
+```
+origin=http://localhost:5199   src=sepia-asset://local/…   naturalWidth=2   broken=false
+```
+
+同一装置下把实现退回 `file://`：`broken=true`、img 元素都没了——**这条实测是能分辨的**，
+不是"改完看着好像好了"。
+
+三条破坏验证：
+- 退回 `file://` → #10e 红（断言 src 的 scheme，不只断言"画出来了"——打包态两条路都画得出）
+- 不判根 → #10g 红
+- 不解软链 → **第一次照绿**：fixture 在 `/var/…`，而登记的根是 realpath 后的 `/private/var/…`，
+  字符串永远对不上，于是"判根"因为**别的原因**恒真。把 `makeBook` 的 tmpdir 先 realpath
+  之后再破坏，才红。**又一条"绿得有别的原因"**，记进 §1.9
 
 ### 本期新增的债
 

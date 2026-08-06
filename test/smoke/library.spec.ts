@@ -23,7 +23,10 @@ interface Book {
 
 /** 造一个 book：`a.md` / `b.md` / `sub/c.md`。 */
 async function makeBook(options: { extra?: number } = {}): Promise<Book> {
-  const home = await mkdtemp(join(tmpdir(), 'sepia-lib-'))
+  // **先 realpath 再 mkdtemp**：macOS 的 `/var → /private/var` 会让 fixture 路径
+  // 与 realpath 后的路径永远不相等，于是"判根"这类检查会因为字符串对不上而**恒绿**——
+  // 软链绕过那条检查第一次就是这么假绿的（破坏 realpath 步骤时它照样过）。
+  const home = await mkdtemp(join(await realpath(tmpdir()), 'sepia-lib-'))
   const book = join(home, 'book')
   await mkdir(join(book, 'sub'), { recursive: true })
   await writeFile(join(book, 'a.md'), '# 甲的标题\n\n甲的正文。\n', 'utf8')
@@ -511,4 +514,74 @@ test('#10e 图片预览**真的画出了像素**（不是只挂了个 <img> 标�
     () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
   )
   expect(shown, '还在显示源码，widget 没接管').not.toContain('![](')
+
+  // 走的必须是特权 scheme，不是 file://——后者在 dev 态（http 源）根本加载不了，
+  // 而 smoke 是打包态，两条路都画得出来，只断言"画出来了"分不清用的是哪条
+  const scheme = await win.evaluate(
+    () => (document.querySelector('.sepia-image img') as HTMLImageElement | null)?.src.split(':')[0] ?? '',
+  )
+  expect(scheme, '还在用 file://——dev 态会看不见').toBe('sepia-asset')
+})
+
+test('#10f 路径里带 `..` 的一律拒——在解析那一步就拒，不做「洗干净再放行」', async () => {
+  const fixture = await makeBook()
+  await writeFile(
+    join(fixture.home, 'outside.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8BQz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC',
+      'base64',
+    ),
+  )
+  await writeFile(join(fixture.book, 'a.md'), '# 标题\n\n![](../outside.png)\n\n尾巴\n', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+
+  await expect
+    .poll(async () => win.evaluate(() => document.querySelector('.sepia-image-broken') !== null), {
+      timeout: 10_000,
+    })
+    .toBe(true)
+  const natural = await win.evaluate(
+    () => (document.querySelector('.sepia-image img') as HTMLImageElement | null)?.naturalWidth ?? 0,
+  )
+  expect(natural, 'book 外的图被读出来了').toBe(0)
+})
+
+test('#10g **软链绕不过去**：book 里一条指向外面的链接，realpath 之后判根 → 403', async () => {
+  const fixture = await makeBook()
+  await mkdir(join(fixture.book, 'img'), { recursive: true })
+  await writeFile(
+    join(fixture.home, 'outside.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8BQz0AEYBxVSF+FAP5FDvcfRYWgAAAAAElFTkSuQmCC',
+      'base64',
+    ),
+  )
+  // 链接在 book **里面**，请求路径里一个 `..` 都没有——只看请求路径必然放行。
+  // 拦住它的只能是「realpath 之后再判根」那一步（`services/assets.ts`）。
+  const { symlink } = await import('node:fs/promises')
+  await symlink(join(fixture.home, 'outside.png'), join(fixture.book, 'img', 'link.png'))
+  await writeFile(join(fixture.book, 'a.md'), '# 标题\n\n![](img/link.png)\n\n尾巴\n', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+
+  await expect
+    .poll(async () => win.evaluate(() => document.querySelector('.sepia-image-broken') !== null), {
+      timeout: 10_000,
+    })
+    .toBe(true)
+  const natural = await win.evaluate(
+    () => (document.querySelector('.sepia-image img') as HTMLImageElement | null)?.naturalWidth ?? 0,
+  )
+  expect(natural, '顺着软链读到 book 外面去了').toBe(0)
 })

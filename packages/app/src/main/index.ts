@@ -16,6 +16,7 @@ import {
   stopSavePipeline,
 } from './ipc/index.ts'
 import { startEngine, stopEngine } from './services/agent-supervisor.ts'
+import { declareAssetScheme, registerAssetProtocol } from './services/assets.ts'
 import { loadConfig, saveConfig, type LoadedConfig } from './services/config.ts'
 import { loadCredentials } from './services/credentials.ts'
 import { sepiaPaths, type SepiaPaths } from './services/paths.ts'
@@ -112,6 +113,11 @@ function armSmoke(window: BrowserWindow): BrowserWindow {
 const testUserData = process.env['SEPIA_TEST_USER_DATA']
 if (testUserData !== undefined && testUserData !== '') app.setPath('userData', testUserData)
 
+// **必须在 ready 之前**：Electron 规定特权 scheme 只能在这之前声明，放进 whenReady
+// 会静默失效（scheme 仍能注册，但没有 standard/secure 特权，dev 态照样加载不出图）。
+// 开销是登记一个字符串，不违反纪律 12。
+declareAssetScheme()
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -150,6 +156,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(
     async () => {
       mark('t1')
+      registerAssetProtocol()
       // os.homedir() 而不是 app.getPath('home')：macOS 上后者**无视 $HOME**
       //（实测 HOME=/tmp/fake 时仍返回 /Users/wp），于是 smoke 的 HOME 隔离完全失效，
       // 测试一直在读写用户真实的 ~/.sepia——冷启动 smoke 曾因此绿得有水分。

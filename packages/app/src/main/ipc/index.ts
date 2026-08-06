@@ -20,6 +20,7 @@ import {
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
+import { allowAssetRoot } from '../services/assets.ts'
 import { openBookStore } from '../services/books.ts'
 import { fillTitles, importImage, readRecents, scanBook, touchRecent, updateLinks, type LinkUpdatePlan } from '../services/library.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
@@ -80,6 +81,9 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     // 环节，忘了调就静默失去监听；而 `file/read` 是 renderer 打开 page 的唯一通道，
     // 事实本来就流经这里。读盘失败就不挂——挂一个不存在的文件没有意义。
     if (result.ok) void watchPage(path)
+    // 同一条事实的第二个用处：**这个 page 所在目录成为图片可读根**。
+    // 与 watchPage 同理，不为它在桥上新开一个 renderer 必须记得调用的环节。
+    if (result.ok) void allowAssetRoot(dirname(path))
     return result
   })
 
@@ -187,6 +191,8 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
   // 扫描**一次性异步**：它在 t5 之后才被调用，绝不进启动同步路径（纪律 12）。
   ipcMain.handle('library/scan', async (_event, dir: unknown): Promise<IoResult<TreeScan>> => {
     if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    // book 根也要登记：`sub/x.md` 里写 `../img/y.png` 时，page 所在目录这一个根不够
+    void allowAssetRoot(dir)
     return { ok: true, value: await scanBook(dir, config.libraryTreeEntryLimit) }
   })
 
