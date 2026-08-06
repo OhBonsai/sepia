@@ -36,6 +36,8 @@ import { nearbyBlocks } from '../markup/nearby.ts'
 // Stage 2 的 KaTeX 教训原样适用。构建产物里它是独立 chunk，冷启动一个字节都不多。
 const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.tsx')).MarkupPanel }))
 import { createAutosave, type Autosave } from '../services/autosave.ts'
+import { FileTree } from '../library/tree.tsx'
+import { Home } from '../library/home.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
 import { registerCommand } from '../commands/registry.ts'
@@ -79,6 +81,8 @@ export function App(): React.JSX.Element {
   const threadStore = useRef<ThreadStore | null>(null)
   const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
   const [panelOpen, setPanelOpen] = useState(false)
+  /** 侧边栏（⌘B）。**可全收起**——收起时纸就是整扇窗（§2.1 ②）。 */
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   /** 点徽章进来的那条线程——面板要**定位到它**，不是只把面板打开（W11 两条路都要通）。 */
   const [focusThread, setFocusThread] = useState<string | null>(null)
 
@@ -219,6 +223,8 @@ export function App(): React.JSX.Element {
       sessionRef.current = next
       setSession(next)
       void api.setSession(next)
+      // 最近打开（§2.1 ③）：置顶+去重+截断在 core，这里只报"打开了它"
+      if (next.book !== null) void api.libraryRecents(next.book, relative)
       await open(absolute, tab?.cursor ?? 0, tab?.scrollTop ?? 0)
     },
     [open, withCurrentPosition],
@@ -256,6 +262,14 @@ export function App(): React.JSX.Element {
     },
     [open, withCurrentPosition],
   )
+
+  /** 选一个文件夹作 book（主页第一条路）。**只改 session.book**，不动 tabs。 */
+  const chooseBook = useCallback((dir: string): void => {
+    const next = { ...withCurrentPosition(sessionRef.current), book: dir }
+    sessionRef.current = next
+    setSession(next)
+    void api.setSession(next)
+  }, [withCurrentPosition])
 
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
@@ -416,6 +430,12 @@ export function App(): React.JSX.Element {
       key: 'Mod-Shift-h',
       run: () => void editor.current?.toggleBadges(),
     })
+    registerCommand({
+      id: 'library.sidebar',
+      title: 'cmd.library.sidebar',
+      key: 'Mod-b',
+      run: () => setSidebarOpen((openNow) => !openNow),
+    })
     // 多 Tab（170 §2.1 ①）。⌘W 关、⌘⇧[ ⌘⇧] 切——与浏览器同一套肌肉记忆
     registerCommand({
       id: 'tab.close',
@@ -461,6 +481,9 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'k') {
         event.preventDefault()
         summon()
+      } else if (event.key === 'b') {
+        event.preventDefault()
+        setSidebarOpen((openNow) => !openNow)
       } else if (event.key === 'w') {
         event.preventDefault()
         void closeTabAt(sessionRef.current.active)
@@ -640,13 +663,22 @@ export function App(): React.JSX.Element {
           onClose={closeSearch}
         />
       )}
+      {/* 侧边栏 + 纸：**收起时纸就是整扇窗**（⌘B，§2.1 ②） */}
+      <div className="sepia-body" data-sepia-sidebar={sidebarOpen && session.book !== null ? 'open' : 'closed'}>
+        {sidebarOpen && session.book !== null && (
+          <FileTree
+            book={session.book}
+            current={session.tabs[session.active]?.page ?? null}
+            onOpen={(relative) => void openInTab(tabPath(session.book, relative))}
+          />
+        )}
+        <div className="sepia-paper-area">
       {page === null ? (
-        <div className="sepia-empty">
-          <p>{t('empty.hint')}</p>
-          <button type="button" onClick={() => void pick()}>
-            {t('empty.open')}
-          </button>
-        </div>
+        <Home
+          book={session.book}
+          onOpenBook={chooseBook}
+          onOpenPage={(absolute) => void openInTab(absolute)}
+        />
       ) : (
         <EditorHost
           doc={page.body}
@@ -686,6 +718,8 @@ export function App(): React.JSX.Element {
           onReady={() => api.perfMark('t5')}
         />
       )}
+        </div>
+      </div>
     </div>
   )
 }

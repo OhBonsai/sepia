@@ -233,7 +233,12 @@ body {
   border: 1px solid var(--sepia-rule);
   border-radius: 4px;
 }
-.sepia-shell { position: relative; }
+.sepia-shell {
+  position: relative;
+  /* 纵向：tab 条 / 横条族在上，body（侧边栏 + 纸）占满其余 */
+  display: flex;
+  flex-direction: column;
+}
 .sepia-search-row { display: flex; gap: 6px; align-items: center; }
 .sepia-search-input {
   width: 200px;
@@ -386,3 +391,71 @@ body {
 .sepia-tab:hover .sepia-tab-close {
   opacity: 1;
 }
+
+/* ── 侧边栏与主页（170 §2.1 ②③）────────────────────────────────────────
+   侧边栏**可全收起**（⌘B）：收起时纸就是整扇窗，没有残留的窄条。
+   主页**也是纸**——同一套字、同一个版心，没有插画、没有卡片网格。 */
+.sepia-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sepia-paper-area {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.sepia-tree {
+  width: 220px;
+  padding: 8px 0;
+  overflow-y: auto;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  border-right: 1px solid var(--sepia-rule);
+}
+
+.sepia-tree-row {
+  padding: 3px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sepia-tree-row:hover { background: var(--sepia-surface); }
+.sepia-tree-row[data-sepia-tree-kind='dir'] { color: var(--sepia-ink); cursor: default; }
+.sepia-tree-row[data-sepia-tree-current='true'] { color: var(--sepia-ink); background: var(--sepia-surface); }
+
+.sepia-tree-notice {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-home {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.sepia-home-actions { display: flex; gap: 8px; }
+
+.sepia-home button {
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  background: transparent;
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sepia-home-label { font-size: 12px; color: var(--sepia-ink-muted); }
+.sepia-home-recent { padding: 4px 0; font-size: 14px; cursor: pointer; }
+.sepia-home-recent:hover { color: var(--sepia-syn-link); }

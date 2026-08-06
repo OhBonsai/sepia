@@ -76,6 +76,13 @@ export const copy = {
   'conflict.choice.both': '都留着（外部那版另存为新文件）',
   'conflict.preserved': '另一版已备份到 .sepia 的 conflicts 里',
 
+  // Stage 6b：库 UI
+  'library.tree.degraded': '这个 book 太大了，只列出了顶层——打开子目录里的文件可用 ⌘O',
+  'cmd.library.sidebar': '收起 / 展开侧边栏',
+  'home.chooseBook': '选择文件夹作为 book',
+  'home.openPage': '打开一个 .md',
+  'home.recents': '最近',
+
   // Stage 6b：多 Tab
   'cmd.tab.close': '关闭这一页',
   'cmd.tab.prev': '上一页',
