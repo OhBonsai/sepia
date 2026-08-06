@@ -136,7 +136,49 @@ async function runMarkup(win: Page): Promise<void> {
   await expect(win.locator('.sepia-markup')).toHaveCount(0)
 }
 
-test('#6 落笔 → 徽章出现，点开看得到对话', async () => {
+/**
+ * 面板在屏幕上是不是真的看得见（像素级，沿用 160 §1.9 条目 7 的手法）。
+ * 属性在、盒子在，都不等于用户看得见——警示点那次就是这么绿着放行的。
+ */
+async function panelVisiblePixels(win: Page): Promise<number> {
+  const shot = (await win.screenshot()).toString('base64')
+  const box = await win.locator('.sepia-threads').boundingBox()
+  if (box === null) return 0
+  return win.evaluate(
+    async ({ data, rect }) => {
+      const img = new Image()
+      await new Promise((resolve, reject) => {
+        img.addEventListener('load', resolve)
+        img.addEventListener('error', reject)
+        img.src = `data:image/png;base64,${data}`
+      })
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (ctx === null) return -1
+      ctx.drawImage(img, 0, 0)
+      // 截图是 CSS 像素的整数倍（HiDPI 下 2x），按比例换算面板那一块
+      const scale = canvas.width / globalThis.innerWidth
+      const px = ctx.getImageData(
+        Math.round(rect.x * scale),
+        Math.round(rect.y * scale),
+        Math.max(1, Math.round(rect.width * scale)),
+        Math.max(1, Math.round(rect.height * scale)),
+      ).data
+      // 面板底色是 paper、有边框——只要那一块**不是清一色**，它就画出来了
+      const first = `${px[0]},${px[1]},${px[2]}`
+      let different = 0
+      for (let i = 4; i < px.length; i += 4) {
+        if (`${px[i]},${px[i + 1]},${px[i + 2]}` !== first) different++
+      }
+      return different
+    },
+    { data: shot, rect: box },
+  )
+}
+
+test('#6 落笔 → 徽章出现 → **点它** → 面板打开且停在这条线程上', async () => {
   const { app, win } = await boot()
   await waitReady(win)
   await stubEngine(app)
@@ -145,14 +187,31 @@ test('#6 落笔 → 徽章出现，点开看得到对话', async () => {
   await runMarkup(win)
   // UI 先行：徽章不等 git 链回来
   await expect(win.locator('.sepia-badge')).toHaveCount(1, { timeout: 5_000 })
+  await expect(win.locator('.sepia-threads'), '还没点，面板不该自己开').toHaveCount(0)
 
-  // 面板里看得到这条对话（问了什么）
-  await win.evaluate(() =>
-    (globalThis as unknown as { api: unknown }) && document.dispatchEvent(new Event('noop')),
+  // ── **真的点上去**（这条检查以前只数个数，描述却写着"点开看得到对话"）──────
+  await win.locator('.sepia-badge').click()
+
+  // 一：面板打开，且**在屏幕上真的看得见**（不是只有属性）
+  await expect(win.locator('.sepia-threads')).toBeVisible({ timeout: 5_000 })
+  expect(await panelVisiblePixels(win), '面板那一块是空白——属性在但没画出来').toBeGreaterThan(50)
+
+  // 二：**停在这条线程上**，不是只把面板打开
+  const badgeId = await win.locator('.sepia-badge').getAttribute('data-sepia-badge')
+  expect(badgeId).toBeTruthy()
+  const row = win.locator(`[data-sepia-thread="${badgeId}"]`)
+  await expect(row, '面板里没有这条线程').toHaveCount(1)
+  await expect(row, '面板开了，但这条没展开——点了一个具体的点却只得到一张列表').toHaveAttribute(
+    'data-sepia-thread-open',
+    'true',
   )
-  await win.keyboard.press('Meta+Shift+p') // 未绑键时无副作用；面板走命令注册表
-  await app.evaluate(() => undefined)
-  await expect(win.locator('.sepia-badge')).toHaveCount(1)
+
+  // 三：里面**是这条线程的对话**（问了什么、答了什么）
+  const turns = win.locator(`[data-sepia-thread-turns="${badgeId}"]`)
+  await expect(turns).toBeVisible()
+  await expect(turns.locator('[data-sepia-turn="user"]')).toContainText(TARGET)
+  await expect(turns.locator('[data-sepia-turn="assistant"]')).toContainText(REVISED)
+
   await app.close()
 })
 

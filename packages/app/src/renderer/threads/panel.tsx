@@ -14,6 +14,8 @@ import { api } from '../services/api.ts'
 
 interface ThreadPanelProps {
   view: ThreadView
+  /** 从徽章点进来的那条：面板打开时**直接展开它**，而不是只显示列表。 */
+  focusId?: string | null
   /** book 目录，取 diff 用。 */
   directory: string
   page: string
@@ -26,9 +28,14 @@ function turnsPreview(placement: ThreadPlacement): string {
 }
 
 export function ThreadPanel(props: ThreadPanelProps): React.JSX.Element {
-  const { view, directory, page, onClose } = props
-  const [openId, setOpenId] = useState<string | null>(null)
+  const { view, directory, page, focusId, onClose } = props
+  const [openId, setOpenId] = useState<string | null>(focusId ?? null)
   const [diff, setDiff] = useState<string | null>(null)
+
+  // 点另一个徽章时面板已经开着，focusId 变了要跟着换——不跟的话第二次点毫无反应
+  useEffect(() => {
+    if (focusId !== undefined && focusId !== null) setOpenId(focusId)
+  }, [focusId])
 
   // Esc 关闭——与浮层同一个出口（一种契约，不是两种）
   useEffect(() => {
@@ -62,10 +69,20 @@ export function ThreadPanel(props: ThreadPanelProps): React.JSX.Element {
       key={placement.thread.id}
       className="sepia-thread"
       data-sepia-thread={placement.thread.id}
+      data-sepia-thread-open={openId === placement.thread.id ? 'true' : 'false'}
       data-sepia-orphan={String(orphan)}
       onClick={() => setOpenId(orphan ? null : placement.thread.id)}
     >
       {turnsPreview(placement)}
+      {openId === placement.thread.id && (
+        <div className="sepia-thread-turns" data-sepia-thread-turns={placement.thread.id}>
+          {placement.thread.turns.map((turn, index) => (
+            <div key={`${turn.role}-${index}`} data-sepia-turn={turn.role}>
+              {turn.text}
+            </div>
+          ))}
+        </div>
+      )}
       {openId === placement.thread.id && (
         <div className="sepia-thread-diff" data-sepia-thread-diff={placement.diffAvailable ? 'on' : 'off'}>
           {placement.diffAvailable ? (diff ?? t('threads.diff.loading')) : t('threads.diff.unavailable')}

@@ -9,7 +9,14 @@ import type { MarkupRun } from '@sepia/core'
 import type { LineEnding } from './bytes.ts'
 import type { SearchApi } from './extensions/search-types.ts'
 import { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
-import { badgeExtension, badgesHidden, setBadges, setBadgesHidden, type BadgeSpot } from './extensions/badges.ts'
+import {
+  badgeClick,
+  badgeExtension,
+  badgesHidden,
+  setBadges,
+  setBadgesHidden,
+  type BadgeSpot,
+} from './extensions/badges.ts'
 import { applyMarkup, type ApplyMarkupRequest, type ApplyMarkupResult } from './markup.ts'
 
 // 纯文本编辑所需的**最小**扩展集合。
@@ -111,6 +118,8 @@ export interface MountOptions extends BaseExtensionOptions {
   /** 查找替换驱动的工厂，与 syntax 同源（`@sepia/editor/markdown` 导出）——同为惰性层。 */
   searchFactory?: (view: EditorViewType) => SearchApi
   parent: HTMLElement
+  /** 点中徽章（W8）。经 Facet 交给 widget——widget 在 state 里造，够不到 app 的回调。 */
+  onBadgeClick?: (id: string) => void
 }
 
 export interface MountedEditor {
@@ -157,11 +166,17 @@ export interface MountedEditor {
 let markupHostResize: ResizeObserver | null = null
 
 export function mountEditor(options: MountOptions): MountedEditor {
-  const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, ...rest } = options
+  const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, onBadgeClick, ...rest } = options
   const state = EditorState.create({
     doc,
     selection: { anchor: Math.min(Math.max(cursor, 0), doc.length) },
-    extensions: [baseExtensions(rest), markupHostExtension(), badgeExtension(), syntax ?? []],
+    extensions: [
+      baseExtensions(rest),
+      markupHostExtension(),
+      badgeExtension(),
+      onBadgeClick === undefined ? [] : badgeClick.of(onBadgeClick),
+      syntax ?? [],
+    ],
   })
   const view = new EditorView({ state, parent })
 

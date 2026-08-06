@@ -78,6 +78,20 @@ async function boot(
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
+/**
+ * 证据截图。**默认不写**——只有 `SEPIA_EVIDENCE=1` 时才落到 `specs/plan/evidence/`。
+ *
+ * 为什么要这道闸（5b 真人轮的旗子二）：这些 png 进了仓库，而 smoke 每跑一次就
+ * 重截一次、字节必然不同。于是"跑一遍测试"这个只读动作会**静默改写别的 stage 的
+ * 证据文件**，再被随手 `git add -A` 卷进无关的提交——本分支就把 Stage 2 的
+ * `a1-full-syntax.png` 这么带进来过。
+ * 证据是**留档**，该在人明确要留档时才产生；平时跑测试不该动它一个字节。
+ */
+async function evidence(win: Page, path: string): Promise<void> {
+  if (process.env['SEPIA_EVIDENCE'] !== '1') return
+  await win.screenshot({ path, fullPage: false })
+}
+
 test('④ 全语法渲染：A/B/C/D 每类可判定的 DOM 特征', async () => {
   const { app, win } = await boot(FULL, { cursor: FULL.length - 2 })
   const probe = await win.evaluate(() => ({
@@ -104,7 +118,7 @@ test('④ 全语法渲染：A/B/C/D 每类可判定的 DOM 特征', async () => 
   expect(probe.diagram).toBe(1)
   expect(probe.hr).toBe(1)
   expect(probe.codeblock).toBeGreaterThan(2)
-  await win.screenshot({ path: `${EVIDENCE}/a1-full-syntax.png`, fullPage: false })
+  await evidence(win, `${EVIDENCE}/a1-full-syntax.png`)
   await app.close()
 })
 
@@ -163,7 +177,7 @@ test('④b C 类 widget 内的行内标记：表格单元格复用 A 类管线�
   // 不是 HTML 字符串，所以 <script> 只可能是六个字符
   expect(probe.脚本节点).toBe(0)
   // 本条是 Stage 4 走查暴露的缺陷，证据跟着 150 走（不是 130 的那批）
-  await win.screenshot({ path: 'specs/plan/evidence/150/table-inline.png', fullPage: false })
+  await evidence(win, 'specs/plan/evidence/150/table-inline.png')
   await app.close()
 })
 
@@ -176,7 +190,7 @@ test('⑤ 揭示行为：光标进入标记露出、离开再隐藏', async () =
   for (let i = 0; i < 4; i++) await win.keyboard.press('ArrowRight')
   await win.waitForTimeout(200)
   expect(await marks()).toBe(true)
-  await win.screenshot({ path: `${EVIDENCE}/a3-revealed.png` })
+  await evidence(win, `${EVIDENCE}/a3-revealed.png`)
   // 走出去，再隐藏
   await win.keyboard.press(`${mod}+ArrowDown`) // 文档末尾
   await win.waitForTimeout(200)
@@ -272,7 +286,7 @@ test('⑦ 查找替换：⌘F 计数、替换后字节符合预期', async () =>
   await win.waitForTimeout(300)
   const count = await win.evaluate(() => document.querySelector('.sepia-search-count')?.textContent)
   expect(count).toBe('3')
-  await win.screenshot({ path: `${EVIDENCE}/a7-search.png` })
+  await evidence(win, `${EVIDENCE}/a7-search.png`)
   // 关掉查找，开替换
   await win.keyboard.press('Escape')
   await win.keyboard.press(`${mod}+Alt+f`)

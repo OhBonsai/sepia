@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type Extension, type Range } from '@codemirror/state'
+import { Facet, StateEffect, StateField, type Extension, type Range } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
 
 // 徽章层（W8 / 160 §2.2）：**纸上留下痕迹**。
@@ -17,6 +17,17 @@ export interface BadgeSpot {
   to: number
 }
 
+/**
+ * 点中徽章要做什么。**走 Facet 注入，与 `assetBase` / `inlineRenderer` 同一个套路**——
+ * widget 是在 StateField 里造的，它够不到 app 的回调，只能从 state 上取。
+ *
+ * 监听挂在**widget 自己的 DOM 上**（`toDOM` 里 addEventListener），不在 document 上
+ * 做全局委托：委托要靠 `closest()` 猜哪个元素是徽章，而 widget 本来就认得自己。
+ */
+export const badgeClick = Facet.define<(id: string) => void, ((id: string) => void) | null>({
+  combine: (values) => values[0] ?? null,
+})
+
 export const setBadges = StateEffect.define<BadgeSpot[]>()
 /** ⌘⇧H 还白（W10）：全隐 ↔ 全显。**只切显示，不动数据**——线程一条不少。 */
 export const setBadgesHidden = StateEffect.define<boolean>()
@@ -30,15 +41,32 @@ class BadgeWidget extends WidgetType {
     return other.id === this.id
   }
 
-  override toDOM(): HTMLElement {
+  /**
+   * `toDOM` 拿得到 view——**点击处理就绑在这儿**。
+   *
+   * 这是 CM6 widget 的正经姿势：widget 造自己的 DOM，也管自己的事件。
+   * 之前这里只造了 span 和 dataset，`ignoreEvent` 的注释写着"点击要能打开线程"，
+   * 而接住事件的那一半根本没写——真人轮点上去毫无反应（160 §2.9 条目 5）。
+   */
+  override toDOM(view: EditorView): HTMLElement {
     const dot = document.createElement('span')
     dot.className = 'sepia-badge'
     dot.dataset['sepiaBadge'] = this.id
     // 无文字、无数字、无头像——它整个就是一个点
+    dot.addEventListener('mousedown', (event) => {
+      // 阻掉默认行为，否则 mousedown 会把光标挪进正文、顺带把选区搅了
+      event.preventDefault()
+      event.stopPropagation()
+    })
+    dot.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      view.state.facet(badgeClick)?.(this.id)
+    })
     return dot
   }
 
-  /** 点击要能打开线程，所以事件**不**交还给编辑器（与 C 类 widget 相反）。 */
+  /** 点击归徽章自己，**不交还给编辑器**（与 C 类 widget 相反——那些要把光标让回去）。 */
   override ignoreEvent(): boolean {
     return true
   }

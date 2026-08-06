@@ -73,6 +73,8 @@ export function App(): React.JSX.Element {
   const threadStore = useRef<ThreadStore | null>(null)
   const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
   const [panelOpen, setPanelOpen] = useState(false)
+  /** 点徽章进来的那条线程——面板要**定位到它**，不是只把面板打开（W11 两条路都要通）。 */
+  const [focusThread, setFocusThread] = useState<string | null>(null)
 
   // markup 浮层（Stage 4）。range 与 snapshot 是 CAS 的两半，同生同灭。
   const editor = useRef<MountedEditor | null>(null)
@@ -443,9 +445,13 @@ export function App(): React.JSX.Element {
       {panelOpen && page !== null && (
         <ThreadPanel
           view={threadView}
+          focusId={focusThread}
           directory={page.path.slice(0, page.path.lastIndexOf('/'))}
           page={page.path}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => {
+            setPanelOpen(false)
+            setFocusThread(null)
+          }}
         />
       )}
       {markup !== null &&
@@ -523,6 +529,12 @@ export function App(): React.JSX.Element {
           }}
           onEditorReady={(instance) => {
             editor.current = instance
+          }}
+          onBadgeClick={(id) => {
+            // W11：点徽章与开面板是同一个面板的两条入口。点进来的这条要**直接展开**，
+            // 否则用户点了一个具体的点，却只得到一张列表——那不叫"打开这条线程"。
+            setFocusThread(id)
+            setPanelOpen(true)
           }}
           onChange={(next) => {
             draft.current = next
