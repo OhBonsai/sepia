@@ -48,8 +48,17 @@ import { recentSelfWrites } from './self-writes.ts'
  */
 const SCOPE_NOTE = 'page 所在目录，非递归'
 
-/** 事件归并窗口。实测 unlink→重建 100ms 内由 chokidar 自己合，超出的由这里合。 */
-const MERGE_WINDOW_MS = 120
+/**
+ * 事件归并窗口。**必须严格宽于 chokidar 自己的 atomic 窗口（默认 100ms），否则它是装饰**。
+ *
+ * 首轮 RV 抓到的：窗口设 120ms 时，把这一整层归并拿掉、单测照样全绿——因为 100ms 内的
+ * `unlink + add` 本来就由 chokidar 折成 `change`，多出的那 20ms 什么也没接住
+ * （170 §1.5 首轮 dead check 之二）。
+ * 300ms 接住的是真实场景：**外部编辑器保存时删了再建、间隔落在 100–300ms**——
+ * 归并不到就会误报「文件被删除了」，那是横条上最响的一句假话。
+ * 代价是删除通知晚 ~300ms（实测 240ms → ~400ms）：换掉一类误报，划算。
+ */
+const MERGE_WINDOW_MS = 300
 
 /** 初次扫描的等待上限。实测本仓库 64ms、`art/` 的一层 564ms；网络盘可能永远不回来。 */
 const READY_TIMEOUT_MS = 3_000

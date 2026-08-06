@@ -305,6 +305,10 @@ test('外部删除当前 page → 横条 + 转游离态，内容留在纸上', a
   })
   // 内容不许跟着文件一起消失——它是用户的字，⌘S 可另存回去
   expect(await docText(window)).toContain('原始正文')
+  // 而且**不许出现"打不开这个文件"**：外部删除是一种状态，不是一次打开失败。
+  // 首轮 RV 抓到的：把 detach 当 reload 处理时，重载会去读一个已经不在的文件、
+  // 报 open 失败——横条与内容都还在，用例照样绿。加上这一条它才红（170 §1.5）。
+  expect(await window.locator('.sepia-error').count(), 'detach 被当成重载了').toBe(0)
 
   await window.locator('.cm-line').first().click()
   await window.keyboard.press('ControlOrMeta+s')

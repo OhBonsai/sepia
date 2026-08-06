@@ -79,12 +79,27 @@ describe('外部变更', () => {
     expect((await waitForNotice()).type === 'external-change' && notices[0]).toMatchObject({ kind: 'removed' })
   })
 
-  it('删了又立刻建回来（外部编辑器的一种保存写法）→ 折成 changed，不是删除', async () => {
+  it('删了又立刻建回来（40ms，落在 chokidar 自己的 atomic 窗口内）→ 折成 changed', async () => {
     await unlink(page)
     await sleep(40)
     await writeFile(page, 'recreated\n', 'utf8')
     const notice = await waitForNotice()
     expect(notice).toMatchObject({ kind: 'changed' })
+  })
+
+  it('**删了 150ms 后才建回来（超出 chokidar 的窗口）→ 仍必须折成 changed**', async () => {
+    // 这条才是本模块归并窗口的存在理由。实测：chokidar 的 atomic 默认 100ms，
+    // 超出就抛出一对 unlink + add；归并不到就会误报「文件被删除了」——
+    // 而外部编辑器保存时"删了再建"的间隔恰恰常常落在 100–300ms。
+    // 第一版窗口设 120ms，把整层归并拿掉照样全绿（首轮 RV 的 dead check 之二），
+    // 因为 120ms 只多出 20ms 覆盖、什么也没接住。
+    await unlink(page)
+    await sleep(150)
+    await writeFile(page, 'recreated later\n', 'utf8')
+    const notice = await waitForNotice()
+    expect(notice, '外部编辑器的删了又建被误报成删除').toMatchObject({ kind: 'changed' })
+    await sleep(SETTLE_MS)
+    expect(notices, '一次保存只许报一条').toHaveLength(1)
   })
 
   it('改别的 .md 不惊动当前 page（a 期只有一个消费者）', async () => {
