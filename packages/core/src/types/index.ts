@@ -46,6 +46,10 @@ export interface AppConfig {
   commitIntervalMs: number
   /** 锚点模糊匹配的相似度下限。调低即更容易误挂（架构 §4.2「宁可孤儿不误挂」）。 */
   anchorFuzzyThreshold: number
+  /** 文件树的条目上限（170 §2.0 人裁 2）。超了降级为只列第一层——**有界**是 6a 回流 1 的要求。 */
+  libraryTreeEntryLimit: number
+  /** 最近打开的保留条数。 */
+  libraryRecentsLimit: number
   /** 文件监听（Stage 6a）。只放真读的字段——见架构 §4.5 那句「不是建设清单」。 */
   watcher: {
     /**

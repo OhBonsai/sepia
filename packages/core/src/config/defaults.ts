@@ -22,6 +22,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   commitIntervalMs: 300_000,
   anchorFuzzyThreshold: 0.75,
   watcher: { usePolling: false },
+  libraryTreeEntryLimit: 500,
+  libraryRecentsLimit: 20,
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
@@ -68,6 +70,8 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'commitIdleMs',
     'commitIntervalMs',
     'anchorFuzzyThreshold',
+    'libraryTreeEntryLimit',
+    'libraryRecentsLimit',
     'watcher',
   ])
   const preserved: Record<string, unknown> = {}
@@ -94,6 +98,8 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
       commitIntervalMs: positiveInt(raw['commitIntervalMs'], DEFAULT_CONFIG.commitIntervalMs),
       // 相似度是 0–1 的小数，positiveInt 收不了它——单独一条：范围外一律退回默认
       anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
+      libraryTreeEntryLimit: positiveInt(raw['libraryTreeEntryLimit'], DEFAULT_CONFIG.libraryTreeEntryLimit),
+      libraryRecentsLimit: positiveInt(raw['libraryRecentsLimit'], DEFAULT_CONFIG.libraryRecentsLimit),
       watcher: { usePolling: isRecord(watcher) && watcher['usePolling'] === true },
     },
     unknown: preserved,
@@ -119,6 +125,12 @@ export function configToDisk(
   if (config.commitIntervalMs !== DEFAULT_CONFIG.commitIntervalMs) out['commitIntervalMs'] = config.commitIntervalMs
   if (config.anchorFuzzyThreshold !== DEFAULT_CONFIG.anchorFuzzyThreshold) {
     out['anchorFuzzyThreshold'] = config.anchorFuzzyThreshold
+  }
+  if (config.libraryTreeEntryLimit !== DEFAULT_CONFIG.libraryTreeEntryLimit) {
+    out['libraryTreeEntryLimit'] = config.libraryTreeEntryLimit
+  }
+  if (config.libraryRecentsLimit !== DEFAULT_CONFIG.libraryRecentsLimit) {
+    out['libraryRecentsLimit'] = config.libraryRecentsLimit
   }
   if (config.watcher.usePolling !== DEFAULT_CONFIG.watcher.usePolling) out['watcher'] = config.watcher
   return out

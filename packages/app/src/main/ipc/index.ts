@@ -15,10 +15,13 @@ import {
   type Thread,
   openTab,
   tabRelative,
+  type RefCandidate,
+  type TreeScan,
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
 import { openBookStore } from '../services/books.ts'
+import { fillTitles, readRecents, scanBook, touchRecent } from '../services/library.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
@@ -179,6 +182,34 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
       return { ok: true, value: await service.diff(before, after, page) }
     },
   )
+
+  // ── library 域（Stage 6b，170 §2.3 申报值）────────────────────────────
+  // 扫描**一次性异步**：它在 t5 之后才被调用，绝不进启动同步路径（纪律 12）。
+  ipcMain.handle('library/scan', async (_event, dir: unknown): Promise<IoResult<TreeScan>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    return { ok: true, value: await scanBook(dir, config.libraryTreeEntryLimit) }
+  })
+
+  ipcMain.handle('library/recents', async (_event, dir: unknown, page: unknown): Promise<IoResult<string[]>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    // 传了 page 就是"打开了它"（置顶+去重+截断）；没传就是纯读
+    if (typeof page === 'string') return touchRecent(paths, dir, page, config.libraryRecentsLimit)
+    return { ok: true, value: await readRecents(paths, dir) }
+  })
+
+  ipcMain.handle('library/titles', async (_event, dir: unknown, items: unknown): Promise<IoResult<RefCandidate[]>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    if (!Array.isArray(items)) return { ok: false, reason: 'items must be an array' }
+    return { ok: true, value: await fillTitles(dir, items as RefCandidate[]) }
+  })
+
+  ipcMain.handle('dialog/open-directory', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = window
+      ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
 
   ipcMain.handle('session/get', async (): Promise<SessionState> => {
     const session = await loadSession(paths)

@@ -16,7 +16,9 @@
     "这是 170 §1.3 预先申报的值——恰好五项，多一项就该在 plan 里先说。",
     "注意这个域**没有 read/write**：读写仍走 api.file.*，文件管理不许成为第二条写正文的通道。",
     "Stage 5b 的增长：api.threads.load/save 两项 + api.git.diff 一项 = 25 → 28。",
-    "threads 没有 delete——删除是 save 一份不含它的表；git 域只读，没有写路径（不变量 3）。"
+    "threads 没有 delete——删除是 save 一份不含它的表；git 域只读，没有写路径（不变量 3）。",
+    "Stage 6b 的增长：api.library.scan/recents/titles 三项 + api.dialog.openDirectory 一项 = 28 → 32。",
+    "library 域只读（扫描/最近/标题），没有写路径；文件操作仍走 files 域——不变量 3 的形态防线。"
   ],
   "surface": [
     "api.agent.interrupt",
@@ -31,6 +33,7 @@
     "api.app.versions.chrome",
     "api.app.versions.electron",
     "api.app.versions.node",
+    "api.dialog.openDirectory",
     "api.dialog.openMarkdown",
     "api.file.read",
     "api.file.write",
@@ -40,6 +43,9 @@
     "api.files.rename",
     "api.files.trash",
     "api.git.diff",
+    "api.library.recents",
+    "api.library.scan",
+    "api.library.titles",
     "api.perf.mark",
     "api.session.get",
     "api.session.set",

@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'vitest'
+
+import { limitTree, matchRefs, pushRecent, titleOf, type RefCandidate, type TreeEntry } from '../src/library/index.ts'
+
+// 170 §2.4 #2 / #3 / #4：树上限与降级、`@` 匹配、recents 置顶截断。
+
+const entry = (path: string, depth: number, kind: 'dir' | 'file' = 'file'): TreeEntry => ({
+  path,
+  name: path.split('/').pop() ?? path,
+  kind,
+  depth,
+})
+
+describe('树扫描上限与降级', () => {
+  it('不超限：原样返回，degraded 为 false', () => {
+    const entries = [entry('a.md', 0), entry('sub', 0, 'dir'), entry('sub/b.md', 1)]
+    expect(limitTree(entries, 500)).toEqual({ entries, degraded: false, total: 3 })
+  })
+
+  it('**超限 → 降级到只剩第一层**，并且说出来（不是悄悄截断）', () => {
+    const entries = [entry('a.md', 0), entry('sub', 0, 'dir'), ...Array.from({ length: 50 }, (_x, i) => entry(`sub/f${i}.md`, 1))]
+    const scan = limitTree(entries, 10)
+    expect(scan.degraded, '超限了却没说').toBe(true)
+    expect(scan.entries.every((row) => row.depth === 0), '降级后不该还有深层条目').toBe(true)
+    expect(scan.total, 'total 要报真实总数，降级提示才有意义').toBe(52)
+  })
+
+  it('降级留的是"顶层"不是"前 N 个"——随机截断的树比降级更糟', () => {
+    const entries = [...Array.from({ length: 30 }, (_x, i) => entry(`deep/f${i}.md`, 1)), entry('top.md', 0)]
+    const scan = limitTree(entries, 5)
+    expect(scan.entries.map((candidate) => candidate.path)).toEqual(['top.md'])
+  })
+})
+
+describe('`@` 匹配（只搜文件名 + 标题）', () => {
+  const candidates: RefCandidate[] = [
+    { path: 'arch.md', name: 'arch.md', title: '架构总览' },
+    { path: 'notes/plan.md', name: 'plan.md', title: '实施计划' },
+    { path: 'notes/archive.md', name: 'archive.md' },
+  ]
+
+  it('前缀命中排在子串命中之前', () => {
+    expect(matchRefs(candidates, 'arch').map((candidate) => candidate.name)).toEqual(['arch.md', 'archive.md'])
+  })
+
+  it('标题也能命中（人裁 4：文件名 + 标题，就这两样）', () => {
+    expect(matchRefs(candidates, '架构').map((candidate) => candidate.name)).toEqual(['arch.md'])
+  })
+
+  it('**标题没建好时仍然即时可用**——索引是后台补的，`@` 不能等它', () => {
+    const noTitles = candidates.map(({ path, name }) => ({ path, name }))
+    expect(matchRefs(noTitles, 'plan').map((candidate) => candidate.name), '纯文件名路径必须照常匹配').toEqual(['plan.md'])
+  })
+
+  it('模糊（字符按序）也能捞到，但排在精确之后', () => {
+    const result = matchRefs(candidates, 'ahv').map((candidate) => candidate.name)
+    expect(result).toContain('archive.md')
+  })
+
+  it('空 query 给全部（刚敲下 @ 的那一刻要先有东西看）', () => {
+    expect(matchRefs(candidates, '')).toHaveLength(3)
+  })
+
+  it('完全不匹配就是空，不硬凑', () => {
+    expect(matchRefs(candidates, 'zzzz')).toEqual([])
+  })
+})
+
+describe('标题提取', () => {
+  it('首个 H1', () => {
+    expect(titleOf('前言\n\n# 真正的标题\n\n# 第二个\n')).toBe('真正的标题')
+  })
+
+  it('frontmatter 的 title 优先于 H1（人裁 4 的次序）', () => {
+    expect(titleOf('---\ntitle: 元信息标题\n---\n\n# H1 标题\n')).toBe('元信息标题')
+  })
+
+  it('带引号的 frontmatter title 去引号', () => {
+    expect(titleOf('---\ntitle: "带引号"\n---\n')).toBe('带引号')
+  })
+
+  it('两个都没有 → undefined（不编一个出来）', () => {
+    expect(titleOf('就是一段正文。\n')).toBeUndefined()
+  })
+})
+
+describe('recents', () => {
+  it('置顶 + 去重 + 截断，三件事一起', () => {
+    expect(pushRecent(['b', 'c'], 'b', 20)).toEqual(['b', 'c'])
+    expect(pushRecent(['b', 'c'], 'a', 20)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('**超过上限要截**——不截的话这张表会一直长', () => {
+    const many = Array.from({ length: 30 }, (_x, i) => `p${i}`)
+    expect(pushRecent(many, 'new', 20)).toHaveLength(20)
+    expect(pushRecent(many, 'new', 20)[0]).toBe('new')
+  })
+})
