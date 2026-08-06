@@ -22,9 +22,20 @@ import { createGitService, type GitService } from './git.ts'
 //   3. commit 触发——renderer 完全不知道 git 存在（160 §1.1 三：写盘的宿主在 renderer，
 //      commit 的宿主在 main，两者不共享一条调用栈）
 
+export interface WriteOutcome {
+  /** 成对 commit 的两点（仅 `markupPair` 时可能有）。链没成就是 null。 */
+  commits: { before: string; after: string } | null
+}
+
 export interface SavePipeline {
-  /** 写一个 page。成功后登记自写并拨动 commit 触发。 */
-  write(path: string, content: string): Promise<IoResult<void>>
+  /**
+   * 写一个 page。成功后登记自写并拨动 commit 触发。
+   *
+   * `markupPair`：**用成对 commit 夹住这一次写**（架构 §4.2 / 160 §2.2）——
+   * 落笔前提一次、写、落笔后再提一次。**必须在 main 侧夹**：从 renderer 发三次
+   * 调用的话，中间会插进自动写盘的防抖，夹出来的两点就不是这一次落笔了。
+   */
+  write(path: string, content: string, options?: { markupPair?: boolean }): Promise<IoResult<WriteOutcome>>
   /** L3 的消费口（共享接缝）。**只读**：L3 只 claim，不 record。 */
   readonly selfWrites: SelfWriteLog
   /** 当前 book 的 GitService（没有 book 时为 null）。 */
@@ -78,7 +89,12 @@ export function createSavePipeline(config: AppConfig): SavePipeline {
   return {
     selfWrites,
 
-    async write(path, content) {
+    async write(path, content, options = {}) {
+      // 落笔前的那一次：把「AI 动手之前的纸面」钉在时间线上。
+      // 失败不拦写盘——**纸永远可写，git 只是旁边记账的**（不变量 1）。
+      const entryBefore = options.markupPair === true ? forRoot(dirname(path)) : null
+      if (entryBefore !== null) await entryBefore.git.commit('premarkup', { page: path })
+
       const written = await atomicWrite(path, content)
       if (!written.ok) return written
 
@@ -96,7 +112,17 @@ export function createSavePipeline(config: AppConfig): SavePipeline {
       } catch {
         // 文件刚写完就没了（用户同时删掉了）——写盘这件事本身仍然是成功的
       }
-      return written
+
+      if (options.markupPair !== true) return { ok: true, value: { commits: null } }
+      // 落笔后的那一次。两点取自「前一次之后的 HEAD」与「这一次之后的 HEAD」——
+      // 中间恰好夹着这次落笔的字节。任一环节没成 → commits: null →
+      // **徽章仍在，只是 diff 不可用**（§2.2）。
+      const entry = forRoot(dirname(path))
+      const before = await entry.git.head()
+      const after = await entry.git.commit('markup', { page: path })
+      const afterSha = await entry.git.head()
+      const usable = after.ok && before !== null && afterSha !== null && before !== afterSha
+      return { ok: true, value: { commits: usable ? { before, after: afterSha } : null } }
     },
 
     gitFor(path) {

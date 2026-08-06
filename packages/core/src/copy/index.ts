@@ -60,6 +60,22 @@ export const copy = {
   'conflict.removed': '这个文件在外部被删除了。内容还在纸上，⌘S 可以另存回去',
   'conflict.watcher.degraded': '文件监听在这个位置不可用，已改为切回窗口时校准',
 
+  // Stage 5b：徽章、线程面板、还白、冲突三选（W8/W10/W11）。
+  'threads.title': '这一篇上的对话',
+  'threads.orphans': '暂时对不上正文的（改回去它们会回来）',
+  'threads.diff.loading': '正在取 diff…',
+  // 链失败时的措辞要**说清楚代价有多小**：徽章还在、对话还在，只是看不了对照
+  'threads.diff.unavailable': '这次没能记上版本，对照看不了；对话还在',
+  'cmd.threads.panel': '线程面板',
+  'cmd.threads.hide': '还白（全隐/全显徽章）',
+  // 三选：三个选项的名字要能让人在三秒内选对——选错的代价是自己的字。
+  // 所以措辞里都点明"谁会被留下"，而不是只说动作。
+  'conflict.choose': '这个文件在外部被改过。你刚敲的字已经落盘——外部那一版要怎么办？',
+  'conflict.choice.mine': '用我的（外部那版另存备份）',
+  'conflict.choice.theirs': '用外部的（我这版先备份再覆盖）',
+  'conflict.choice.both': '都留着（外部那版另存为新文件）',
+  'conflict.preserved': '另一版已备份到 .sepia 的 conflicts 里',
+
   'cmd.file.new': '新建 page',
   'cmd.file.rename': '重命名',
   'cmd.file.move': '移动到…',

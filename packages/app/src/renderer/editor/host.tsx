@@ -16,6 +16,8 @@ export interface EditorHostProps {
   /** page 所在目录：图片相对路径的解析基（Stage 2）。 */
   assetBase: string
   onChange: (doc: string) => void
+  /** 点中徽章（W8）→ 打开线程面板并定位到它。 */
+  onBadgeClick?: (id: string) => void
   onCursorChange: (cursor: number) => void
   onScrollChange: (scrollTop: number) => void
   /** CM6 就绪且光标落位——t5，即"可写"。 */
@@ -37,6 +39,7 @@ export function EditorHost({
   initialScrollTop,
   assetBase,
   onChange,
+  onBadgeClick,
   onCursorChange,
   onScrollChange,
   onReady,
@@ -47,8 +50,8 @@ export function EditorHost({
   const editor = useRef<MountedEditor | null>(null)
 
   // 回调放进 ref：它们变化时不重建 EditorView——重建会丢光标、丢滚动、丢撤销历史。
-  const handlers = useRef({ onChange, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady })
-  handlers.current = { onChange, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady }
+  const handlers = useRef({ onChange, onBadgeClick, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady })
+  handlers.current = { onChange, onBadgeClick, onCursorChange, onScrollChange, onReady, onSearchReady, onEditorReady }
 
   useEffect(() => {
     let disposed = false
@@ -67,6 +70,7 @@ export function EditorHost({
         syntax: markdownExtensions({ assetBase }),
         searchFactory: searchApi,
         onChange: (next) => handlers.current.onChange(next),
+        onBadgeClick: (id) => handlers.current.onBadgeClick?.(id),
         onSelectionChange: (cursor) => handlers.current.onCursorChange(cursor),
         onScroll: (scrollTop) => handlers.current.onScrollChange(scrollTop),
       })

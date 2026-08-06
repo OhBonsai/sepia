@@ -9,6 +9,14 @@ import type { MarkupRun } from '@sepia/core'
 import type { LineEnding } from './bytes.ts'
 import type { SearchApi } from './extensions/search-types.ts'
 import { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
+import {
+  badgeClick,
+  badgeExtension,
+  badgesHidden,
+  setBadges,
+  setBadgesHidden,
+  type BadgeSpot,
+} from './extensions/badges.ts'
 import { applyMarkup, type ApplyMarkupRequest, type ApplyMarkupResult } from './markup.ts'
 
 // 纯文本编辑所需的**最小**扩展集合。
@@ -110,6 +118,8 @@ export interface MountOptions extends BaseExtensionOptions {
   /** 查找替换驱动的工厂，与 syntax 同源（`@sepia/editor/markdown` 导出）——同为惰性层。 */
   searchFactory?: (view: EditorViewType) => SearchApi
   parent: HTMLElement
+  /** 点中徽章（W8）。经 Facet 交给 widget——widget 在 state 里造，够不到 app 的回调。 */
+  onBadgeClick?: (id: string) => void
 }
 
 export interface MountedEditor {
@@ -136,6 +146,13 @@ export interface MountedEditor {
    */
   openMarkupHost(): HTMLElement
   closeMarkupHost(): void
+  /**
+   * 挂徽章（W8）。传全量——徽章是**由线程按当前正文算出来的**，
+   * 不是增量维护的状态（`placeThreads` 一次算清，这里照着画）。
+   */
+  showBadges(spots: BadgeSpot[]): void
+  /** ⌘⇧H 还白（W10）：全隐 ↔ 全显来回切。返回切换后的「是否全隐」。 */
+  toggleBadges(): boolean
 }
 
 /**
@@ -149,11 +166,17 @@ export interface MountedEditor {
 let markupHostResize: ResizeObserver | null = null
 
 export function mountEditor(options: MountOptions): MountedEditor {
-  const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, ...rest } = options
+  const { doc, cursor, scrollTop, onScroll, syntax, searchFactory, parent, onBadgeClick, ...rest } = options
   const state = EditorState.create({
     doc,
     selection: { anchor: Math.min(Math.max(cursor, 0), doc.length) },
-    extensions: [baseExtensions(rest), markupHostExtension(), syntax ?? []],
+    extensions: [
+      baseExtensions(rest),
+      markupHostExtension(),
+      badgeExtension(),
+      onBadgeClick === undefined ? [] : badgeClick.of(onBadgeClick),
+      syntax ?? [],
+    ],
   })
   const view = new EditorView({ state, parent })
 
@@ -194,6 +217,14 @@ export function mountEditor(options: MountOptions): MountedEditor {
       return { from, to }
     },
     applyMarkup: (request, run) => applyMarkup(view, request, run),
+    // 徽章：传全量。徽章是由线程按当前正文**算出来的**，不是增量维护的状态——
+    // 算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug。
+    showBadges: (spots) => view.dispatch({ effects: setBadges.of(spots) }),
+    toggleBadges: () => {
+      const next = !badgesHidden(view)
+      view.dispatch({ effects: setBadgesHidden.of(next) })
+      return next
+    },
     openMarkupHost: () => {
       // 容器由**这里**建、由 app 填。建在 editor 侧是因为它的生命周期跟着 widget 走，
       // 而不是跟着 React 的挂载走——收起时 CM6 把它移出文档流，节点本身还在，

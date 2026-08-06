@@ -65,6 +65,100 @@ body {
   pointer-events: none;
 }
 
+/* ── 徽章（W8）：纸上留下的痕迹 ─────────────────────────────────────────
+   形态是裁死的：**直径 8px 的小点、悬停微放大、不放数字不放头像**。
+   数字与头像是通知区的语言——一放上去，纸就变成了收件箱。
+
+   z-index 的教训已经付过一次（160 §1.9 条目 7：警示点被编辑器整个盖住）：
+   徽章是行内 widget，住在 `.cm-content` 内部，绘制顺序天然在正文之后，
+   **不需要 z-index**；但它的可见性同样只能由像素判定，见 smoke #8b。 */
+.sepia-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  vertical-align: middle;
+  background: var(--sepia-syn-link);
+  border-radius: 50%;
+  cursor: pointer;
+  /* 悬停微放大——"微"是分寸：1.25 倍，不是弹跳、不是发光 */
+  transition: transform 120ms ease;
+}
+
+.sepia-badge:hover {
+  transform: scale(1.25);
+}
+
+/* 全隐时整层不画（⌘⇧H 还白，W10）——装饰层直接不产出，不是 display:none。
+   数据一条不少，只是纸面回到白的那一刻。 */
+
+/* 线程面板（W11）：本篇线程 + 孤儿置灰区。唤起式，不常驻——常驻布局归 6b。 */
+.sepia-threads {
+  position: fixed;
+  right: 16px;
+  bottom: 24px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  max-height: 60vh;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-threads-title {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-thread {
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 孤儿置灰区：**沉下去，不消失**（T-27）。对话还在，只是暂时没地方挂。 */
+.sepia-thread[data-sepia-orphan='true'] {
+  color: var(--sepia-ink-muted);
+  background: transparent;
+  border-style: dashed;
+  cursor: default;
+}
+
+.sepia-thread-diff {
+  margin-top: 6px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--sepia-ink-muted);
+}
+
+/* 冲突三选（170 回流 3）：沿用横条形态升级，**不做模态**——模态会打断书写。 */
+.sepia-conflict-choices {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-conflict-choices button {
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 /* W12：Agent 缺席的**细提示线**——一条线的存在感，不弹窗、不占版面。 */
 .sepia-agent-line {
   padding: 2px 16px;

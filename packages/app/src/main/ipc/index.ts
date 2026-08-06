@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
@@ -12,13 +12,15 @@ import {
   type IoResult,
   type PerfMark,
   type SessionState,
+  type Thread,
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
+import { openBookStore } from '../services/books.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
-import { createSavePipeline, type SavePipeline } from '../services/save-pipeline.ts'
+import { createSavePipeline, type SavePipeline, type WriteOutcome } from '../services/save-pipeline.ts'
 import { mark, printReport, report } from '../services/perf.ts'
 import * as supervisor from '../services/agent-supervisor.ts'
 import * as theme from '../services/theme.ts'
@@ -80,19 +82,32 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
   // 语义是"用户显式保存自己当前编辑的全文"。Stage 4 的落笔必须走**独立的区间写通道**
   // （只接受 `{range, expectedText}`，无无校验重载），并且在类型/模块边界上够不到这一条——
   // 否则 CAS 就从「唯一入口」退化成「其中一个入口」，不变量 3 失去机器保障。
-  ipcMain.handle('file/write', async (_event, path: unknown, content: unknown): Promise<IoResult<void>> => {
+  ipcMain.handle(
+    'file/write',
+    async (_event, path: unknown, content: unknown, options: unknown): Promise<IoResult<WriteOutcome>> => {
     if (typeof path !== 'string' || !isAbsolute(path)) {
       return { ok: false, reason: 'path must be absolute' }
     }
     if (typeof content !== 'string') return { ok: false, reason: 'content must be a string' }
+    // `markupPair`（Stage 5b）：用成对 commit **夹住这一次写**。桥上没有多一个 key——
+    // 它是既有写通道的一个选项，因为夹住的顺序只有 main 保证得了：从 renderer 发三次
+    // 调用的话，中间会插进自动写盘的防抖，夹出来的两点就不是这一次落笔了。
+    const markupPair =
+      typeof options === 'object' && options !== null && (options as { markupPair?: unknown }).markupPair === true
     // 走管线而不是直接 atomicWrite：写盘成功之后还有两件事——登记自写（共享接缝）、
     // 拨动 commit 触发。**renderer 对这两件事一无所知**，它只知道自己保存了一次。
-    const written = pipeline === null ? await atomicWrite(path, content) : await pipeline.write(path, content)
+    const written =
+      pipeline === null
+        ? await atomicWrite(path, content).then(
+            (r): IoResult<WriteOutcome> => (r.ok ? { ok: true, value: { commits: null } } : r),
+          )
+        : await pipeline.write(path, content, { markupPair })
     // 自写之后立刻刷新对账印记。不刷的话：保存 → 切走 → 切回来 → focus 对账拿旧印记
     // 一比，把自己刚存的东西报成外部变更。回声抑制只管事件那条路，对账这条要自己刷。
     if (written.ok) await refreshStamp(path)
     return written
-  })
+    },
+  )
 
   ipcMain.handle('dialog/open-markdown', async (event): Promise<string | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
@@ -124,6 +139,43 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
   // 回收站、不许退化成 unlink"这条能在不起 Electron 的单测里被盯住（架构 §4.9）。
   ipcMain.handle('files/trash', async (_event, path: unknown): Promise<IoResult<void>> =>
     trashPage(path, (target) => shell.trashItem(target)),
+  )
+
+  // ── threads 域（Stage 5b，160 §2.3 申报值 = 恰好两项）────────────────────
+  // **没有 delete**：删除是写一份不含它的表。少一个通道少一处不变量。
+  // 线程住 `~/.sepia/books/<id>/threads/`，**一个字节都不进 book**（T-34 同理）。
+  ipcMain.handle('threads/load', async (_event, directory: unknown): Promise<IoResult<Thread[]>> => {
+    if (typeof directory !== 'string' || !isAbsolute(directory)) {
+      return { ok: false, reason: 'directory must be absolute' }
+    }
+    const store = await openBookStore(paths, directory)
+    return { ok: true, value: await store.readThreads() }
+  })
+
+  ipcMain.handle('threads/save', async (_event, directory: unknown, threads: unknown): Promise<IoResult<void>> => {
+    if (typeof directory !== 'string' || !isAbsolute(directory)) {
+      return { ok: false, reason: 'directory must be absolute' }
+    }
+    if (!Array.isArray(threads)) return { ok: false, reason: 'threads must be an array' }
+    const store = await openBookStore(paths, directory)
+    return store.writeThreads(threads as Thread[])
+  })
+
+  // 徽章的 diff **从 git 取**（D-08），不在线程里存第二份正文。
+  // 取不到返回 null——那是"这次看不了对照"，不是错误（§2.2 链失败同一条路）。
+  ipcMain.handle(
+    'git/diff',
+    async (_event, directory: unknown, before: unknown, after: unknown, page: unknown): Promise<IoResult<string | null>> => {
+      if (typeof directory !== 'string' || !isAbsolute(directory)) {
+        return { ok: false, reason: 'directory must be absolute' }
+      }
+      if (typeof before !== 'string' || typeof after !== 'string' || typeof page !== 'string') {
+        return { ok: false, reason: 'bad request' }
+      }
+      const service = pipeline?.gitFor(join(directory, 'x'))
+      if (service === undefined) return { ok: true, value: null }
+      return { ok: true, value: await service.diff(before, after, page) }
+    },
   )
 
   ipcMain.handle('session/get', async (): Promise<SessionState> => {
@@ -259,11 +311,25 @@ export function broadcastTheme(): () => void {
  * 判定不在这里——main 只报事实，`decideExternalChange` 在 core，消费在 renderer
  * （只有那边知道脏不脏、光标在哪）。
  */
-export function broadcastFiles(): () => void {
+export function broadcastFiles(paths: SepiaPaths): () => void {
   return onFileNotice((notice: FileNotice) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send('files/external-change', notice)
-    }
+    void (async () => {
+      let payload = notice
+      // **留存必须在通知之前**（170 回流 3 / 160 §2.5 #5）：有脏冲突的处置是"先落盘"，
+      // 那一下就把外部那一版从磁盘上抹掉了。等 renderer 收到通知再去读，读到的
+      // 已经是我们自己刚写进去的那版——**没有第二个地方能拿回它**。
+      if (notice.type === 'external-change' && notice.kind === 'changed') {
+        const read = await readText(notice.path)
+        if (read.ok) {
+          const store = await openBookStore(paths, dirname(notice.path))
+          const kept = await store.preserveConflict(basename(notice.path), read.value, Date.now())
+          payload = { ...notice, theirs: read.value, ...(kept.ok ? { preserved: kept.value } : {}) }
+        }
+      }
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('files/external-change', payload)
+      }
+    })()
   })
 }
 

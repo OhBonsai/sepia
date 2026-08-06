@@ -133,6 +133,20 @@ async function messages(book: string): Promise<string[]> {
     .filter((entry) => entry !== '')
 }
 
+/**
+ * 证据截图。**默认不写**——只有 `SEPIA_EVIDENCE=1` 时才落到 `specs/plan/evidence/`。
+ *
+ * 为什么要这道闸（5b 真人轮的旗子二）：这些 png 进了仓库，而 smoke 每跑一次就
+ * 重截一次、字节必然不同。于是"跑一遍测试"这个只读动作会**静默改写别的 stage 的
+ * 证据文件**，再被随手 `git add -A` 卷进无关的提交——本分支就把 Stage 2 的
+ * `a1-full-syntax.png` 这么带进来过。
+ * 证据是**留档**，该在人明确要留档时才产生；平时跑测试不该动它一个字节。
+ */
+async function evidence(win: Page, path: string): Promise<void> {
+  if (process.env['SEPIA_EVIDENCE'] !== '1') return
+  await win.screenshot({ path, fullPage: false })
+}
+
 test('#7 写字 → 800ms 自动落盘 → 静默 commit 产生且带 trailer', async () => {
   const { app, win, book, page } = await boot()
   await type(win, '自动保存的新字。')
@@ -183,7 +197,7 @@ test('#8 写盘失败 → 纸角警示点**在屏幕上真的看得见**，恢�
     .poll(async () => dangerPixelsBottomRight(win), { timeout: 10_000 })
     .toBeGreaterThan(20)
   // 证据留档：真人轮看到的那一幕，修好之后长什么样（160 §1.9 条目 7）
-  await win.screenshot({ path: 'specs/plan/evidence/160/save-warning-visible.png' })
+  await evidence(win, 'specs/plan/evidence/160/save-warning-visible.png')
 
   // 恢复权限后再写一次 → 点消失（"恢复即消"），且屏幕上也真的没了
   await chmod(book, 0o755)
