@@ -30,7 +30,7 @@ async function seed(body = BODY, name = 'page.md'): Promise<{ home: string; page
   await mkdir(join(home, '.sepia'), { recursive: true })
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page, cursor: 0, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: page, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
   return { home, page }
@@ -161,7 +161,7 @@ test('外部把文件改短、session 里的光标越界 → 仍可写不崩（�
   // 场景是真的：应用关着的时候外部把文件截短了，session.json 里的光标已越界。
   // CM6 的 `EditorState.create` 对越界 anchor 直接抛 RangeError——夹取不做就是白屏。
   const { home, page } = await seed()
-  await writeFile(join(home, '.sepia', 'session.json'), JSON.stringify({ version: 1, page, cursor: 999_999, scrollTop: 0 }), 'utf8')
+  await writeFile(join(home, '.sepia', 'session.json'), JSON.stringify({ version: 2, book: null, tabs: [{ page: page, cursor: 999_999, scrollTop: 0 }], active: 0 }), 'utf8')
 
   const app = await launch(home)
   const window = await ready(app)
@@ -227,7 +227,7 @@ async function trashCase(scratch: Awaited<ReturnType<typeof scratchVolume>>): Pr
   await writeFile(target, '要被删掉的纸\n', 'utf8')
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page: target, cursor: 0, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: target, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
 

@@ -47,7 +47,7 @@ async function launch(extraEnv: Record<string, string> = {}): Promise<Harness> {
   await mkdir(join(home, '.sepia'), { recursive: true })
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page, cursor: 0, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: page, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
 

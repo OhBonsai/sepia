@@ -36,7 +36,7 @@ test('a4 真引擎全链：⌘K → 只唤起改写 agent → diff → 落笔', 
   await mkdir(join(home, '.sepia'), { recursive: true })
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page: pagePath, cursor: 0, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: pagePath, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
 
