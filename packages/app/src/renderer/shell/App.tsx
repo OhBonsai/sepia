@@ -388,6 +388,18 @@ export function App(): React.JSX.Element {
       await save()
     },
     reload: open,
+    // 三选的"用外部的"：写回磁盘 + 走既有 open 重载。
+    // **刻意不给 MountedEditor 加一个"整篇替换"方法**——那会在类型上开出第二条
+    // 写正文的路，而不变量 3 的机器保证正是靠"拿不到 view 就绕不过 CAS"。
+    // 这两步都是既有路径：写盘是 ⌘S 那条，重载是打开文件那条。
+    adoptTheirs: (content: string) => {
+      const target = page?.path
+      if (target === undefined) return
+      void (async () => {
+        await api.writeFile(target, content)
+        await open(target)
+      })()
+    },
     position: () => ({ cursor: editor.current?.selection().from ?? 0, scrollTop: sessionDraft.current.scrollTop }),
     onOpen: (next) => void open(next),
     onGone: () => {
@@ -410,6 +422,20 @@ export function App(): React.JSX.Element {
       {conflict !== null && (
         <div className="sepia-conflict-line" data-sepia-conflict={conflict.kind}>
           {conflict.text}
+          {conflict.choices !== undefined && (
+            <span className="sepia-conflict-choices" data-sepia-conflict-choices="open">
+              {(['mine', 'theirs', 'both'] as const).map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  data-sepia-conflict-choice={choice}
+                  onClick={() => conflict.choices?.choose(choice)}
+                >
+                  {t(`conflict.choice.${choice}`)}
+                </button>
+              ))}
+            </span>
+          )}
         </div>
       )}
       {error !== null && <div className="sepia-error">{error}</div>}

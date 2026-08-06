@@ -1,4 +1,4 @@
-import { isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
@@ -311,11 +311,25 @@ export function broadcastTheme(): () => void {
  * 判定不在这里——main 只报事实，`decideExternalChange` 在 core，消费在 renderer
  * （只有那边知道脏不脏、光标在哪）。
  */
-export function broadcastFiles(): () => void {
+export function broadcastFiles(paths: SepiaPaths): () => void {
   return onFileNotice((notice: FileNotice) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send('files/external-change', notice)
-    }
+    void (async () => {
+      let payload = notice
+      // **留存必须在通知之前**（170 回流 3 / 160 §2.5 #5）：有脏冲突的处置是"先落盘"，
+      // 那一下就把外部那一版从磁盘上抹掉了。等 renderer 收到通知再去读，读到的
+      // 已经是我们自己刚写进去的那版——**没有第二个地方能拿回它**。
+      if (notice.type === 'external-change' && notice.kind === 'changed') {
+        const read = await readText(notice.path)
+        if (read.ok) {
+          const store = await openBookStore(paths, dirname(notice.path))
+          const kept = await store.preserveConflict(basename(notice.path), read.value, Date.now())
+          payload = { ...notice, theirs: read.value, ...(kept.ok ? { preserved: kept.value } : {}) }
+        }
+      }
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('files/external-change', payload)
+      }
+    })()
   })
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { type CopyKey, decideExternalChange, type FileNotice, t } from '@sepia/core'
+import { type ConflictChoice, type CopyKey, decideExternalChange, type FileNotice, planConflictChoice, t } from '@sepia/core'
 
 import { api } from '../services/api.ts'
 
@@ -21,12 +21,22 @@ export interface ConflictBanner {
   /** 给 smoke 与截图留档用的判读位：`saved` / `removed` / `degraded`。 */
   kind: 'saved' | 'removed' | 'degraded'
   text: string
+  /**
+   * 三选（Stage 5b，170 回流 3）。只在**有脏冲突且拿得到外部那一版**时出现——
+   * 拿不到就降级回 a 期的一句话，因为没有外部版本的"三选"是假的三选。
+   *
+   * **横条出现时字已经安全了**（a 期的"先落盘"没有变）：三选是在"已经安全"之上
+   * 给回旋，不是让用户在丢字的风险下做选择题。
+   */
+  choices?: { choose: (choice: ConflictChoice) => void }
 }
 
 export interface ExternalChangeOptions {
   /** 当前 page 的绝对路径；null = 空状态，此时没有任何东西要盯。 */
   path: string | null
   dirty: boolean
+  /** 用外部那一版覆盖正文（三选的 `theirs`）。走既有 open 路径，不另开写通道。 */
+  adoptTheirs?: (content: string) => void
   /** ⌘S 那条保存路径本身。有脏时**先落盘**用它，不另开通道。 */
   save: () => Promise<void>
   /** 打开 page 的既有路径。重载 = 用新光标重新 open 一次。 */
@@ -78,8 +88,27 @@ export function useExternalChange(options: ExternalChangeOptions): ConflictBanne
           const { cursor, scrollTop } = position()
           await reload(notice.path, cursor, scrollTop)
         }
-        if (decision.notice !== null) show(decision.notice, decision.sticky)
-        else setBanner(null)
+        if (decision.notice !== null) {
+          show(decision.notice, decision.sticky)
+          // 三选：**外部那一版已经由 main 在发通知之前留存过了**，所以这里拿得到它。
+          const theirs = notice.type === 'external-change' ? notice.theirs : undefined
+          const adopt = latest.current.adoptTheirs
+          if (decision.action === 'save' && theirs !== undefined && adopt !== undefined) {
+            setBanner({
+              kind: 'saved',
+              text: t('conflict.choose'),
+              choices: {
+                choose: (choice) => {
+                  const plan = planConflictChoice(choice)
+                  // `preserve` 那一半已经办了（theirs 在通知前留存、mine 在磁盘上就是当前内容），
+                  // 这里只剩"采纳谁"——**采纳前不需要再留存一次**，因为两版此刻都还在。
+                  if (plan.adopt === 'theirs') adopt(theirs)
+                  setBanner(null)
+                },
+              },
+            })
+          }
+        } else setBanner(null)
       })()
     })
 

@@ -16,6 +16,15 @@ export type ExternalChangeKind = 'changed' | 'removed'
  * 只有 reconcile 抓到，说明 watcher 在这台机器上是瞎的。
  */
 export interface ExternalChange {
+  /**
+   * 外部那一版的正文（Stage 5b 三选要用）。**在通知发出之前就已经留存过一份**——
+   * 有脏冲突的处置是"先落盘"，那一下会把外部那版从磁盘上抹掉，所以留存必须发生在
+   * 更早的地方：main 发通知之前（160 §2.5 #5 的"唯一那道保护"）。
+   * 读不到时为 undefined（文件已被删、权限变了），那时三选降级为 a 期的两句话。
+   */
+  theirs?: string
+  /** 留存文件的绝对路径（`~/.sepia/books/<id>/conflicts/`）。 */
+  preserved?: string
   type: 'external-change'
   path: string
   kind: ExternalChangeKind

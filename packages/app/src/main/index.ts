@@ -164,7 +164,7 @@ if (!app.requestSingleInstanceLock()) {
       registerIpc(paths, loaded.config)
       broadcastTheme()
       broadcastAgent()
-      broadcastFiles()
+      broadcastFiles(paths)
       // 网络盘逃生舱（架构 §4.9）。watcher 本体的挂载在 renderer 打开 page 之后
       // （见 ipc 的 `file/read`）——它属于异步路径，纪律 12 不许它挡光标。
       //
