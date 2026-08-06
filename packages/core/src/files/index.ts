@@ -61,6 +61,48 @@ export function decideExternalChange(input: { kind: ExternalChangeKind; dirty: b
   return { action: 'reload', notice: null, sticky: false }
 }
 
+/**
+ * 有脏冲突的**三选**（b 期，170 回流 3 的落地）。
+ *
+ * a 期只有一种动作——先落盘、再横条告知（保住用户刚敲的字，这条不变）。
+ * b 期把它升级成三选，但**默认动作仍是 a 期那一个**：横条出现时字已经安全了，
+ * 三选是在"已经安全"之上给回旋，不是让用户在丢字的风险下做选择题。
+ */
+export type ConflictChoice =
+  /** 用我的：保留编辑器里这一版（已落盘），外部那版留在 conflicts/ */
+  | 'mine'
+  /** 用外部的：拿外部那版覆盖，**我的那版先留一份**再覆盖 */
+  | 'theirs'
+  /** 都留着：我的留在原处，外部那版另存为一个文件 */
+  | 'both'
+
+export interface ConflictPlan {
+  /** 正文最终要变成哪一版。`null` = 不动编辑器。 */
+  adopt: 'mine' | 'theirs'
+  /**
+   * **覆盖之前**要留存的那一版。`null` = 不留。
+   *
+   * 顺序是这条的全部意义：先留存、后覆盖。反过来的话，留下的是我们刚写进去的
+   * 那一版，外部那版已经没了——§2.5 #5 盯的正是这个顺序，而**没有第二个地方
+   * 能拿回外部版本**，所以它是"唯一那道保护"。
+   */
+  preserve: 'mine' | 'theirs' | null
+}
+
+export function planConflictChoice(choice: ConflictChoice): ConflictPlan {
+  switch (choice) {
+    case 'mine':
+      // 我的已经落盘了；外部那版是即将失去的一方，留它
+      return { adopt: 'mine', preserve: 'theirs' }
+    case 'theirs':
+      // 要拿外部的覆盖 → 即将失去的是我的，**先留我的**再覆盖
+      return { adopt: 'theirs', preserve: 'mine' }
+    case 'both':
+      // 都留着：正文保持我的，外部那版另存
+      return { adopt: 'mine', preserve: 'theirs' }
+  }
+}
+
 // **自写回声的判据不在这里**：它是 L2 定的共享接缝 `core/fs/self-write.ts`
 // （`createSelfWriteLog`，指纹 = path + mtime + size，claim 消费型，两侧 realpath）。
 // 本文件一度有一份自己的 `isSelfWrite`——那是 L2 未合并期的桩，合并后**必须删掉**：

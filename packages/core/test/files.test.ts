@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { decideExternalChange, reconcileKind } from '../src/files/index.ts'
+import { decideExternalChange, reconcileKind, planConflictChoice} from '../src/files/index.ts'
 
 // 170 §1.4 检查 1：脏 × 外部改 × 删除的四格矩阵。
 // 破坏方式（预写）：把「有脏 + changed」判成 reload —— 那正是覆盖用户字节的那个场景。
@@ -67,5 +67,34 @@ describe('focus 对账（架构 §4.9 的兜底半边）', () => {
 
   it('文件不在了 → removed', () => {
     expect(reconcileKind({ mtimeMs: 5, size: 9 }, null)).toBe('removed')
+  })
+})
+
+// §2.5 #5：三选矩阵，以及**留存先于覆盖**那个顺序。
+describe('有脏冲突的三选（b 期）', () => {
+  it('用我的 → 正文是我的，**外部那版被留存**（它是即将失去的一方）', () => {
+    expect(planConflictChoice('mine')).toEqual({ adopt: 'mine', preserve: 'theirs' })
+  })
+
+  it('用外部的 → 正文换成外部的，**先留我的**再覆盖', () => {
+    // 这一条是三格里唯一会覆盖用户自己字节的，所以 preserve 必须是 mine
+    expect(planConflictChoice('theirs')).toEqual({ adopt: 'theirs', preserve: 'mine' })
+  })
+
+  it('都留着 → 正文保持我的，外部那版另存', () => {
+    expect(planConflictChoice('both')).toEqual({ adopt: 'mine', preserve: 'theirs' })
+  })
+
+  it('**每一格都留了一版**——三选里没有"两版都不留"的格子', () => {
+    for (const choice of ['mine', 'theirs', 'both'] as const) {
+      expect(planConflictChoice(choice).preserve, `${choice} 没留存任何一版`).not.toBeNull()
+    }
+  })
+
+  it('留存的永远是**即将失去的那一版**，不是被采纳的那版', () => {
+    for (const choice of ['mine', 'theirs', 'both'] as const) {
+      const plan = planConflictChoice(choice)
+      expect(plan.preserve, `${choice} 留存了被采纳的那版，等于什么都没留`).not.toBe(plan.adopt)
+    }
   })
 })

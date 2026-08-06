@@ -5,10 +5,14 @@ import {
   ANCHOR_FILE_VERSION,
   BOOK_META_VERSION,
   bookId,
+  conflictFileName,
+  THREAD_FILE_VERSION,
   type Anchor,
   type AnchorFile,
   type BookMeta,
   type IoResult,
+  type Thread,
+  type ThreadFile,
 } from '@sepia/core'
 
 import { atomicWrite, readTextIfExists } from './fsio.ts'
@@ -28,6 +32,18 @@ export interface BookStore {
   /** 记下 book 的当前真实路径。b 期的「重新关联」靠它认出 book 被搬过。 */
   writeMeta(): Promise<IoResult<void>>
   readMeta(): Promise<BookMeta | null>
+  /** 本 book 的全部线程（b 期）。读坏的那条跳过，不让一条坏 json 埋掉整面板。 */
+  readThreads(): Promise<Thread[]>
+  /**
+   * 覆盖式写入整张线程表。**没有 delete 通道**——删除是写一份不含它的表，
+   * 少一个通道少一处不变量（160 §2.3 的申报）。
+   */
+  writeThreads(threads: Thread[]): Promise<IoResult<void>>
+  /**
+   * 冲突留存（170 回流 3）：把即将失去的那一版留一份。
+   * **调用点必须在覆盖之前**——覆盖之后就没有第二个地方能拿回它了。
+   */
+  preserveConflict(pageName: string, content: string, at: number): Promise<IoResult<string>>
 }
 
 /**
@@ -42,6 +58,8 @@ export async function openBookStore(paths: SepiaPaths, bookPath: string): Promis
   const dir = join(paths.home, 'books', id)
   const anchorsPath = join(dir, 'anchors.json')
   const metaPath = join(dir, 'meta.json')
+  const threadsDir = join(dir, 'threads')
+  const conflictsDir = join(dir, 'conflicts')
 
   return {
     dir,
@@ -66,6 +84,48 @@ export async function openBookStore(paths: SepiaPaths, bookPath: string): Promis
     async writeMeta() {
       const meta: BookMeta = { version: BOOK_META_VERSION, path: real }
       return atomicWrite(metaPath, JSON.stringify(meta, null, 2))
+    },
+
+    async readThreads() {
+      const { readdir } = await import('node:fs/promises')
+      const names = await readdir(threadsDir).catch(() => [] as string[])
+      const out: Thread[] = []
+      for (const name of names) {
+        if (!name.endsWith('.json')) continue
+        const raw = await readTextIfExists(join(threadsDir, name))
+        if (!raw.ok || raw.value === null) continue
+        try {
+          const parsed = JSON.parse(raw.value) as ThreadFile
+          // 一条坏 json 只丢它自己：面板是"纸上发生过什么"的账本，
+          // 因为一条读不出来就整本不显示，比丢一条糟得多
+          if (parsed.thread?.id) out.push(parsed.thread)
+        } catch {
+          continue
+        }
+      }
+      return out
+    },
+
+    async writeThreads(threads) {
+      const { readdir, unlink } = await import('node:fs/promises')
+      for (const thread of threads) {
+        const file: ThreadFile = { version: THREAD_FILE_VERSION, thread }
+        const written = await atomicWrite(join(threadsDir, `${thread.id}.json`), JSON.stringify(file, null, 2))
+        if (!written.ok) return written
+      }
+      // 表里没有的就是被删掉的。**先写后删**：中途崩了顶多多留一条，不会少一条
+      const keep = new Set(threads.map((thread) => `${thread.id}.json`))
+      const names = await readdir(threadsDir).catch(() => [] as string[])
+      for (const name of names) {
+        if (name.endsWith('.json') && !keep.has(name)) await unlink(join(threadsDir, name)).catch(() => undefined)
+      }
+      return { ok: true, value: undefined }
+    },
+
+    async preserveConflict(pageName, content, at) {
+      const target = join(conflictsDir, conflictFileName(pageName, at))
+      const written = await atomicWrite(target, content)
+      return written.ok ? { ok: true, value: target } : written
     },
 
     async readMeta() {
