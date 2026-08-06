@@ -1,10 +1,10 @@
 ---
 stage: 6
 title: 库与文件
-status: in-progress   # 2026-08-06 起草；a 期实施完成（L3，待 L2 合并后 rebase + 人工验证），b 期入口条件见 §2
+status: in-progress   # 2026-08-06 起草；a 期实施完成并已 rebase 到含 Stage 5a 的 master、接缝换实体（只剩 §1.6 人工验证五项），b 期入口条件见 §2
 dod_a: 外部改文件（无脏）→ 重载且尽量保光标；（有脏）→ 先落盘 + 横条提示；自写不自扰；删除进回收站；`open -a Sepia x.md` 游离打开可写；watcher 失效时 focus 对账仍工作
 dod_b: 整个 art/ 作 book 启动仍 <1s；@ 搜索即时（b 期入口后回填细化）
-checks_added: 20
+checks_added: 20                # 集成后：#2 删（判据归 L2），#21 新增，净数不变
 checks_reverse_verified: 20
 dead_checks: 3         # 首轮破坏后仍绿：检查 15 旧判据、检查 4 的归并层（窗口 120ms）、检查 19 对 detach 破坏不敏感（三处已改，见 §1.5）
 exemptions: 4          # 继承 150 收尾值，本期零新增
@@ -19,6 +19,7 @@ measured:
   reconcile_ms: 0              # 一次 focus 对账（<1ms）
   watch_art_recursive_ms: 87600    # 反例：整棵 art/ 递归监听，rss 1.3GB / 4138 次 EMFILE
   watch_art_depth2_ms: 564         # 同一棵树 depth:2，1479 项 / 58MB / 零错误
+  events_per_write: 1              # 真管线 tmp+rename 连写 20 轮，每轮恰好一个 watcher 事件
 ---
 
 # 170 · Stage 6：库与文件（a 期：watcher + 对账 + 冲突 + 文件操作）
@@ -72,9 +73,22 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L3**，与 **
      且消费型语义把代价封顶在"误吞一次"。
    - **过期即放行**（默认 5s）。回声是毫秒级到的；更晚的同指纹变更更可能是真改动。
 
-   **状态**：纯模块 + 7 条单测已随 L2 落地（`packages/core/test/self-write.test.ts`，
-   两条破坏——不消费、指纹去掉 size——均实证必红）。**L3 现在就能 import 真类型**，
-   不必等 L2 的写盘管线合并；要跑通链路再用本地桩接 `record` 那一侧。
+   **状态（2026-08-06 集成收尾后）：接缝已换实体，桩已删。** L3 侧的落地形态：
+
+   - 取法 `savePipeline()?.selfWrites`，**注入**给 watcher（`configureWatcher({ selfWrites })`，
+     装配点在 `main/index.ts`）。刻意不在 watcher 里 `import '../ipc/index.ts'`——
+     ipc 已经 import watcher（`file/read` 挂监听、`file/write` 刷印记），反向 import 成环，
+     `check:deps` 的 `no-circular` 当场红。
+   - 四条语义逐条照做：**claim 消费型**（挡完顺手把印记推平）、**两侧 realpath**
+     （renderer 给的是 `/var/...`，L2 登记的是 `/private/var/...`）、**指纹补齐 size**、
+     过期即放行（用 L2 的默认 5s）。
+   - **L3 只 claim，不 record。** 于是 `services/files.ts` 的四个动作（新建/改名/移动/删除）
+     不往表里写——删除与改名压根给不出 path+mtime+size 三件套。它们的回声由「谁在动手」
+     那一侧收尾：renderer 成功后立刻改指或清空 page，watcher 的 `currentPage` 在归并窗口
+     结束前就变了，旧路径那条事实落地无声（**有单测盯这条链**，不靠时序碰运气）。
+   - **消费型语义的前提已实证**：真管线 tmp+rename 连写 20 次，watcher 侧**每次恰好一个事件**
+     （20/20，见 §1.5 集成一节）。一次写落成两个事件的话，第一个被 claim 挡住、第二个就会
+     漏成"外部改动"——那正是消费型语义唯一的失效方式。
 4. 共享注册表仅追加；`bun.lock` 冲突以重新 `bun install` 为准。
 
 ### 一、Stage 4 的 DoD 达成情况
@@ -135,7 +149,7 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L3**，与 **
 恰好这些，快照 diff 为准。**依赖**：`chokidar@4` → app（唯一新增，无原生模块 T-18）。
 **配置**：`watcher.usePolling`、对账/归并阈值——只加真读的。
 
-## 1.4 harness 增量（20 条，硬度分档）
+## 1.4 harness 增量（20 条，硬度分档；集成后 #2 删、#5 加严、#21 新增）
 
 **硬度**：检查 5（有脏先落盘）按**不变量级心态**对待——它守的是"用户刚敲的字不许被覆盖"
 （不变量 2 的锋面）。其余为纪律级。本期**零新增豁免、零 dispute**。
@@ -143,10 +157,10 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L3**，与 **
 | # | 检查 | 层 | 位置 |
 |---|---|---|---|
 | 1 | 冲突判定矩阵（脏 × changed/removed 四格穷举） | core 单测 | `core/test/files.test.ts` |
-| 2 | 回声抑制判据（路径 + mtime + TTL） | core 单测 | 同上 |
+| 2 | ~~回声抑制判据~~ → **集成后删**：判据是 L2 的 `createSelfWriteLog`（`core/test/self-write.test.ts` 7 条），本期不许再有第二份 | — | — |
 | 3 | focus 对账比对（mtime/size/不在了/无印记） | core 单测 | 同上 |
 | 4 | watcher 真事件：就地改一条、删了又建折成 changed（**含超出 chokidar 窗口的 150ms 例**） | app 单测（真 fs） | `app/test/main/watcher.test.ts` |
-| 5 | watcher 回声抑制：`atomicWrite` 一次 → 零通知，随后真外部改仍报 | app 单测（真 fs） | 同上 |
+| 5 | **回声抑制（真接缝）**：走真写盘管线保存 → 零通知；claim 消费型（挡完表里为空）；连写 20 次零漏；随后真外部改仍报 | app 单测（真 fs + 真管线） | 同上 |
 | 6 | 降级：切 `reconcile-only` + 一次性告知 + 对账仍抓到 | app 单测 | 同上 |
 | 7 | 新建**已存在即失败**（不覆盖） | app 单测 | `app/test/main/files.test.ts` |
 | 8 | 删除**必经回收站**：注入空 trash，文件必须还在；trash 失败不改用 unlink | app 单测 | 同上 |
@@ -154,6 +168,7 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L3**，与 **
 | 10 | 游离判定：repo 内/`.git` 是文件/不在 repo | app 单测 | 同上 |
 | 11 | 文件命令路由（四条 × 参数解析 × 无 page 时不动手） | renderer 单测 | `app/test/renderer/file-commands.test.ts` |
 | 12 | argv 队列：一次取一个、peek 不消费（**改判定的老检查**） | app 单测 | `app/test/main/argv.test.ts` |
+| 21 | **自己动手改的文件不惊动自己**：自己改名当前 page → 重新指向后旧路径的事件落地无声（`files.ts` 不 record 的前提） | app 单测 | `app/test/main/watcher.test.ts` |
 | 13 | smoke · 外部改（无脏）→ 重载、静默、**光标不回文首** | smoke | `test/smoke/external-change.spec.ts` |
 | 14 | **smoke · 外部改（有脏）→ 先落盘 + 常驻横条，零字节丢失** | smoke | 同上 |
 | 15 | smoke · 自写不自扰：⌘S 后**撤销历史仍在** | smoke | 同上 |
@@ -185,6 +200,31 @@ focus 不对账→红 ｜ `mountEditor` 的夹取拿掉→红 ｜ 归并把删�
 是"用覆盖面更小的手段换掉更大的"，而且破坏它不会有任何可观测差别（第二道夹取兜住）——
 那就是 002 §2.1 元教训的翻版。于是拆成两条**打在真实路径上**的检查：检查 13（保光标）与
 检查 20 后半（session 光标越界 999999 → 仍可写不崩），后者的破坏对象正是 `mountEditor` 那行。
+
+### 集成收尾（2026-08-06，rebase 到含 Stage 5a 的 master 之后）
+
+**一次 atomicWrite = 恰好一个 watcher 事件——实证 20/20。** 真写盘管线（`pipeline.write`
+→ tmp + rename）连写 20 轮，每轮之间等够归并窗口，watcher 侧数到的事件数逐轮都是 1
+（`perRound: [1×20]`, `notExactlyOne: 0`）。这条不是好奇心：**claim 是消费型**，
+一次写只登记一条记录、只挡一次回声，若一次写落成两个事件，第二个必漏成"外部改动"。
+数出来是 1，消费型语义才站得住。
+
+**接缝换实体后的五条 RV**（都对着"接缝没对齐"的具体形态）：
+
+| 破坏 | 结果 |
+|---|---|
+| `claim` 恒 false（接缝断开） | 单测 3 条红 |
+| claim 少给 `size`（指纹三件套缺一） | 单测 3 条红 |
+| claim 不做 realpath（`/var` vs `/private/var`） | **单测 3 条红**；smoke 检查 6 仍绿——见下 |
+| `settle` 不看 `currentPage` | 单测 2 条红（含 #21 自己改名那条） |
+| `files.ts` 改回自己 record | 不做：接缝语义写明 L3 只 claim；该由 #21 那条链守 |
+
+**又一次「破坏后仍绿」，与 §1.5 上表同因，不另计 dead check**：claim 不做 realpath 时
+smoke 检查 6 照样绿，因为生产路径上还有第二道——`file/write` 之后 ipc 会 `refreshStamp`，
+印记未变的守卫把漏下来的事件挡住了。**单测层没有那道兜底**（不经 ipc），所以它红。
+判词与 RV7 同：这是纵深防御而非空转，**敏感的那一层是单测**；smoke 只在两道全拆时才红。
+计数上保持 `dead_checks: 3`（本期真正改过判据的三条），不为同一现象重复计数——
+若人审认为该按 L2 的口径逐次计，改成 4 并在此处加一行即可。
 
 **`bun run check` 最终输出**：
 ```
@@ -221,6 +261,7 @@ PASS
 | 一次 focus 对账 | — | < 1ms | — |
 | **反例**：整棵 `art/` 递归监听 | — | **87.6s / rss 1.3GB / 4138 次 EMFILE** | — |
 | 同树 `depth:2` | — | 564ms / 1479 项 / 58MB / 零错误 | — |
+| **一次写 = 几个 watcher 事件** | 恰好 1 | **1（20/20 轮）** | — |
 | 依赖新增 | — | `chokidar@4.0.3`（+2 包，零原生模块） | — |
 
 冷启动 +36ms 相对 150 的 523ms：在机器忙时（并行线在跑 smoke）单次曾测到 743ms，
@@ -233,7 +274,7 @@ PASS
 | 1 | chokidar v4 + `atomic` 对我们 tmp+rename 的真实归并行为 | **已先探（最小脚本，chokidar 4.0.3 / macOS 14 / APFS）**：`atomic:true` 下 tmp+rename = **一次 change**；vim 式 backup+write = 一次 change；就地写有时**两条** change。**关掉 atomic 更糟：tmp+rename 变成零事件**（rename 覆盖已监听文件在 mac 上不报）——所以 `atomic:true` 不是优化而是必需。另有硬边界：**监听单个文件路径完全收不到事件**（六种写法全零），监听对象只能是目录 |
 | 2 | 大 book 的 watch 成本 | **已探，且改判了范围**（§1.1 三）：递归监听真实 `art/` = 87.6s / 1.3GB / **4138 次 EMFILE**（chokidar v4 无 fsevents，每目录一个 `fs.watch`）。**这不是 Linux 专属的长期债，mac 上当场就炸**。a 期收到「page 所在目录、非递归」= 79ms。b 期的文件树必须带上限 + 降级（回流 1） |
 | 3 | 外部删除 vs 移动的事件歧义（unlink+add） | 已探：真移动 = `add:新` + `unlink:旧`（**顺序还不固定**，atomic 开关会换顺序）；unlink→重建 ≤100ms 由 chokidar 折成 change，**>100ms 则是一对**。因此自建归并窗口必须 **>100ms**（定 300ms），否则是装饰——首轮 RV 正是这么抓到的（§1.5） |
-| 4 | L2 接缝的桩与实体差异 | **未消**：`self-writes.ts` 是本地桩（环形表，形状 = `{path, mtimeMs, atMs}`，`noteSelfWrite` 记在 `fsio.atomicWrite` 这个唯一写盘漏斗上）。rebase 后若 L2 已维护同一张表，**删桩换实体，不许两张表并存**（两张各记一半 → 回声漏 → 表现为"保存一次自我重载一次"）。集成验证 = 全量 smoke |
+| 4 | L2 接缝的桩与实体差异 | **已消（2026-08-06 集成收尾）**。差异有三处，逐条对上：桩的指纹是 `{path, mtimeMs, atMs}` → 实体要 `{path, mtimeMs, size}`（**补 size**）；桩不管符号链接 → 实体要求**两侧 realpath**；桩是"查询型"过滤 → 实体是**消费型 claim**（于是多出「一次写必须恰好一个事件」这条前提，已实证 20/20）。桩连同 `fsio` 里那次 record 一并删除——**登记点只剩写盘管线一个**。core 里那份重复判据同删。集成证据：全量 check PASS + smoke 35/35，其中「保存一次不自我重载」在真接缝下绿 |
 | 5 | **新发现：并行线之间抢单实例锁** | 已解。Electron 的 `userData` 在 macOS 上**无视 `$HOME`**，单实例锁按它定——L2/L3 同时跑 smoke 时后启动的应用直接 `app.quit()`，一扇窗都不开，报出来像"应用起不来"（实际是 T-29 在正确工作）。加 `SEPIA_TEST_USER_DATA` 隔离，五个既有 smoke 文件一并接上；此后 L2 在跑的同时本地 29 条 smoke 全绿 |
 
 ## 1.9 回流
@@ -250,7 +291,10 @@ PASS
    直接用，不要另造一条"带参数的命令"通道。
 5. **smoke 的并行隔离已成既有设施**：`SEPIA_TEST_USER_DATA`。新写 smoke 一律带上，
    否则两条线并行时会互相踩（§1.8 风险 5）。
-6. **002 §1 的层级表可补一例**：本期首轮三条空转全部是「同一性质被上游另一道保护兜住」，
+6. **smoke 的单实例锁隔离已铺满六个文件**（含 L2 新加的 `save-commit.spec.ts`）。
+   这不是洁癖：不隔离时两条线并行跑 smoke，后启动的应用抢不到锁直接 quit，
+   一扇窗都不开，报出来是「Target page has been closed」——像应用坏了，实则 T-29 正常工作。
+7. **002 §1 的层级表可补一例**：本期首轮三条空转全部是「同一性质被上游另一道保护兜住」，
    而不是断言写错。教训是——**破坏方式要瞄"这道保护是唯一的那道"**，若不是唯一的，
    就得把上下游一起破坏，或把判据换到只有这道保护能兑现的可观测量（撤销历史那条）。
 

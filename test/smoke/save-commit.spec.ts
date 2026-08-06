@@ -63,7 +63,18 @@ async function boot(options: { git?: boolean; readonly?: boolean } = {}): Promis
   )
   if (options.readonly === true) await chmod(book, 0o555)
 
-  const app = await electron.launch({ args: LAUNCH_ARGS, env: { ...process.env, HOME: home, USERPROFILE: home } })
+  const app = await electron.launch({
+    args: LAUNCH_ARGS,
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      // 单实例锁按 Electron 的 userData 定，而它**不跟 $HOME 走**（macOS 上 app.getPath
+      // 无视 $HOME）。不隔离它，两条线并行跑 smoke 时后启动的应用会抢不到锁直接 quit，
+      // 一扇窗都不开（170 §1.8 风险 5 实测）。其余五个 smoke 文件同此。
+      SEPIA_TEST_USER_DATA: join(home, 'electron-user-data'),
+    },
+  })
   launched.push(app)
   const win = await app.firstWindow()
   await win.waitForSelector('.cm-content')
