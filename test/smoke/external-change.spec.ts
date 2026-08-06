@@ -207,6 +207,16 @@ async function scratchVolume(): Promise<{ dir: string; trash: string; dispose: (
 
 test('检查 7 · 删除进系统回收站，不是 unlink', async () => {
   const scratch = await scratchVolume()
+  // **卸载必须在 finally 里**：用例红的时候（反向验证时它就该红）也得把卷卸掉，
+  // 否则 /Volumes 下会积一串挂着的 SepiaSmokeXXXX——RV 第一轮就积了一个。
+  try {
+    await trashCase(scratch)
+  } finally {
+    await scratch?.dispose()
+  }
+})
+
+async function trashCase(scratch: Awaited<ReturnType<typeof scratchVolume>>): Promise<void> {
   const home = await mkdtemp(join(tmpdir(), 'sepia-6a-trash-'))
   await mkdir(join(home, '.sepia'), { recursive: true })
 
@@ -242,8 +252,7 @@ test('检查 7 · 删除进系统回收站，不是 unlink', async () => {
   expect(await readdir(base)).not.toContain('to-be-trashed.md')
 
   await app.close()
-  await scratch?.dispose()
-})
+}
 
 test('检查 8 · 游离 page：argv 打开非 book 的 .md → 可写可存', async () => {
   // 位置刻意不在任何 git repo 里（T-30 的降级语义）
