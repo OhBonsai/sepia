@@ -59,7 +59,8 @@ const api = {
     move: (from: string, directory: string) => ipcRenderer.invoke('files/move', from, directory),
     trash: (path: string) => ipcRenderer.invoke('files/trash', path),
     /** 收一张图进 book（§2.1 ⑤）。只增不改。 */
-    importImage: (source: string, book: string) => ipcRenderer.invoke('files/import-image', source, book),
+    importImage: (name: string, bytes: Uint8Array, book: string) =>
+      ipcRenderer.invoke('files/import-image', name, bytes, book),
     /** 更新链接（§2.1 ⑥）。`apply=false` 只查不改——**改不改由用户点那一下决定**。 */
     updateLinks: (book: string, from: string, to: string, apply: boolean) =>
       ipcRenderer.invoke('files/update-links', book, from, to, apply),

@@ -204,12 +204,23 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
   })
 
   // 收图（§2.1 ⑤）：**只增不改**，重名加序号绝不覆盖——拖进来的图片是用户的字节。
-  ipcMain.handle('files/import-image', async (_event, source: unknown, book: unknown): Promise<IoResult<string>> => {
-    if (typeof source !== 'string' || typeof book !== 'string' || !isAbsolute(book)) {
-      return { ok: false, reason: 'bad request' }
-    }
-    return importImage(source, book)
-  })
+  ipcMain.handle(
+    'files/import-image',
+    async (_event, name: unknown, bytes: unknown, book: unknown): Promise<IoResult<string>> => {
+      if (typeof name !== 'string' || typeof book !== 'string' || !isAbsolute(book)) {
+        return { ok: false, reason: 'bad request' }
+      }
+      // 结构化克隆过来的是 Uint8Array（或 ArrayBuffer）——两种都收
+      const data =
+        bytes instanceof Uint8Array
+          ? bytes
+          : bytes instanceof ArrayBuffer
+            ? new Uint8Array(bytes)
+            : null
+      if (data === null || data.byteLength === 0) return { ok: false, reason: 'empty image' }
+      return importImage(name, data, book)
+    },
+  )
 
   // 更新链接（§2.1 ⑥ / T-31）：**只找不改**，改不改由用户点那一下决定。
   ipcMain.handle(

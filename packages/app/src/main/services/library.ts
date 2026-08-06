@@ -15,7 +15,7 @@ import {
   type TreeScan,
 } from '@sepia/core'
 
-import { atomicWrite, readTextIfExists } from './fsio.ts'
+import { atomicWrite, atomicWriteBytes, readTextIfExists } from './fsio.ts'
 import { openBookStore } from './books.ts'
 import type { SepiaPaths } from './paths.ts'
 
@@ -131,11 +131,16 @@ export async function touchRecent(
 /**
  * 收一张图进 book（§2.1 ⑤）：落 `img/<yyMMddHHmm>-<原名>`，返回 book 相对路径。
  *
+ * **收的是字节不是路径**（真人轮实测的教训，§2.9 条目 6）：
+ *   · Electron ≥32 **删掉了 `File.path`**，拖进来的 File 上根本没有路径可用；
+ *   · 粘贴的截图**在磁盘上压根没有文件**，路径这个概念不存在。
+ * 走字节两条路就是同一条路，也不必为拖拽单开 `webUtils` 那条通道。
+ *
  * **只增不改**：目标重名时加序号，绝不覆盖已有的图——用户拖进来的图片是他的字节。
  */
-export async function importImage(source: string, book: string): Promise<IoResult<string>> {
-  const { copyFile, mkdir: makeDir } = await import('node:fs/promises')
-  const base = source.split('/').pop() ?? 'image'
+export async function importImage(name: string, bytes: Uint8Array, book: string): Promise<IoResult<string>> {
+  const { mkdir: makeDir } = await import('node:fs/promises')
+  const base = name.split('/').pop() ?? 'image'
   let target = imageTarget(base, Date.now())
   try {
     await makeDir(join(book, 'img'), { recursive: true })
@@ -149,7 +154,8 @@ export async function importImage(source: string, book: string): Promise<IoResul
       const dot = target.lastIndexOf('.')
       target = dot === -1 ? `${target}-${n}` : `${target.slice(0, dot)}-${n}${target.slice(dot)}`
     }
-    await copyFile(source, join(book, target))
+    const written = await atomicWriteBytes(join(book, target), bytes)
+    if (!written.ok) return written
     return { ok: true, value: target }
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }

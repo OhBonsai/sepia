@@ -319,27 +319,28 @@ export function App(): React.JSX.Element {
    * 插入走 `replaceGuarded`（零长度区间 = 纯插入），与 `@` 同一条 CAS 通道——
    * 仍然没有第二条写正文的路。
    */
-  const dropImages = useCallback(
-    async (paths: string[]): Promise<void> => {
-      const book = sessionRef.current.book
-      const instance = editor.current
-      if (book === null || instance === null || paths.length === 0) return
-      for (const source of paths) {
-        const imported = await api.importImage(source, book)
-        if (!imported.ok) continue
-        const at = instance.selection().from
-        instance.replaceGuarded({
-          range: { from: at, to: at },
-          expectedText: '',
-          replacement: `![](${imported.value})`,
-        })
-      }
-      draft.current = instance.read()
-      setDirty(true)
-      autosave.current?.bump()
-    },
-    [],
-  )
+  const dropImages = useCallback(async (images: File[]): Promise<void> => {
+    const book = sessionRef.current.book
+    const instance = editor.current
+    // 没有 book 就没有 `img/` 可落——游离 page 收图归后话（记债）
+    if (book === null || instance === null || images.length === 0) return
+    for (const file of images) {
+      // **读字节，不读路径**：Electron ≥32 删了 `File.path`，而粘贴的截图
+      // 在磁盘上根本没有文件——字节是这两条路唯一的共同语言
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const imported = await api.importImage(file.name || 'image.png', bytes, book)
+      if (!imported.ok) continue
+      const at = instance.selection().from
+      instance.replaceGuarded({
+        range: { from: at, to: at },
+        expectedText: '',
+        replacement: `![](${imported.value})`,
+      })
+    }
+    draft.current = instance.read()
+    setDirty(true)
+    autosave.current?.bump()
+  }, [])
 
   // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
   useEffect(() => {
@@ -833,19 +834,21 @@ export function App(): React.JSX.Element {
         <div
           className="sepia-paper-area"
           onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            // **编辑区只收图片**（架构 §4.9 落点表）：拖 .md 进来归窗口空白那条路，
-            // 拖别的一切无效——静默无效比"猜用户想干什么"好
+          onDropCapture={(event) => {
+            // **捕获阶段**：CM6 自己也管 drop/paste，冒泡阶段轮到我们时它可能
+            // 已经 preventDefault 了。图片这条路要抢在它前面（真人轮实测：拖进来毫无反应）
             const images = [...event.dataTransfer.files].filter((file) => file.type.startsWith('image/'))
-            if (images.length === 0) return
+            if (images.length === 0) return // 拖别的一切静默无效（架构 §4.9 落点表）
             event.preventDefault()
-            void dropImages(images.map((file) => (file as File & { path: string }).path).filter(Boolean))
+            event.stopPropagation()
+            void dropImages(images)
           }}
-          onPaste={(event) => {
+          onPasteCapture={(event) => {
             const images = [...event.clipboardData.files].filter((file) => file.type.startsWith('image/'))
-            if (images.length === 0) return
+            if (images.length === 0) return // 粘文本仍走 CM6 自己那条（剪贴板智能转换，T-28）
             event.preventDefault()
-            void dropImages(images.map((file) => (file as File & { path: string }).path).filter(Boolean))
+            event.stopPropagation()
+            void dropImages(images)
           }}
         >
       {page === null ? (

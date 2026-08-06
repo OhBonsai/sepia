@@ -29,6 +29,24 @@ export async function readTextIfExists(path: string): Promise<IoResult<string | 
   }
 }
 
+/**
+ * 二进制原子写（图片）。与 `atomicWrite` 同一套 tmp + rename——
+ * **纪律 8 说的是"fs 写只住这个文件"，不是"只写文本"**，所以它必须在这儿，
+ * 而不是在 library.ts 里就地 writeFile。
+ */
+export async function atomicWriteBytes(path: string, bytes: Uint8Array): Promise<IoResult<void>> {
+  const tmp = join(dirname(path), `.${randomBytes(6).toString('hex')}.tmp`)
+  try {
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(tmp, bytes)
+    await rename(tmp, path)
+    return { ok: true, value: undefined }
+  } catch (error) {
+    await unlink(tmp).catch(() => undefined)
+    return { ok: false, reason: describe(error) }
+  }
+}
+
 export async function atomicWrite(path: string, content: string): Promise<IoResult<void>> {
   const tmp = join(dirname(path), `.${randomBytes(6).toString('hex')}.tmp`)
   try {

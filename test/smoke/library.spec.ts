@@ -221,11 +221,90 @@ test('#9 `@` 引用：出列表 → 选中插入标准 md 链接 → 链接可�
   expect(text).toContain('[乙的标题]')
 })
 
-test('#10 拖图 → img/ 落盘 + 插入 `![]()`，原字节只增不改', async () => {
+/**
+ * 在页面里造一个真事件（`paste` 或 `drop`），`dataTransfer` 里带一个图片 File。
+ *
+ * **必须走真事件**：旧版 #10 直接调 `importImage`，把"事件到底到没到我的 handler"
+ * 整个假设掉了——于是 `File.path` 在 Electron 43 上恒为 undefined 这件事
+ * 一路绿到真人轮（§2.9 条目 6）。
+ */
+async function fireImageEvent(win: Page, kind: 'paste' | 'drop', name: string): Promise<void> {
+  await win.evaluate(
+    async ([type, fileName]) => {
+      // 一张最小的合法 PNG（1x1）
+      const base64 =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const file = new File([bytes], fileName as string, { type: 'image/png' })
+      const dt = new DataTransfer()
+      dt.items.add(file)
+      const target = document.querySelector('.cm-content')
+      if (target === null) throw new Error('no editor')
+      const event =
+        type === 'paste'
+          ? new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+          : new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+    },
+    [kind, name],
+  )
+}
+
+test('#10 **粘贴**一张图 → 落 img/ + 插 `![]()`，原字节只增不改', async () => {
   const fixture = await makeBook()
-  // 造一张"图片"（内容不重要，走的是复制那条路）
-  const source = join(fixture.home, 'photo.png')
-  await writeFile(source, 'PNGDATA', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+  await win.locator('.cm-content').click()
+  await win.keyboard.press('Meta+ArrowDown')
+
+  await fireImageEvent(win, 'paste', 'shot.png')
+
+  // 一：正文里插了 `![](img/…)`
+  await expect
+    .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
+      timeout: 10_000,
+    })
+    .toMatch(/!\[]\(img\/\d{10}-shot\.png\)/)
+
+  // 二：图**真的落在盘上**，且字节原样（1x1 PNG 的头四字节）
+  const { readdir } = await import('node:fs/promises')
+  const names = await readdir(join(fixture.book, 'img'))
+  expect(names, 'img/ 里没东西——收图那条路没走通').toHaveLength(1)
+  const bytes = await readFile(join(fixture.book, 'img', names[0]!))
+  expect([...bytes.subarray(0, 4)], '落盘的不是 PNG 字节').toEqual([0x89, 0x50, 0x4e, 0x47])
+})
+
+test('#10b **拖拽**一张图 → 同一条路（Electron 43 上 File.path 已不存在）', async () => {
+  const fixture = await makeBook()
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+  await win.locator('.cm-content').click()
+
+  await fireImageEvent(win, 'drop', 'dragged.png')
+
+  await expect
+    .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
+      timeout: 10_000,
+    })
+    .toContain('](img/')
+  const { readdir } = await import('node:fs/promises')
+  expect(await readdir(join(fixture.book, 'img'))).toHaveLength(1)
+})
+
+test('#10c 拖别的一切**静默无效**：正文一个字节不变，img/ 不冒出来', async () => {
+  const fixture = await makeBook()
   const win = await launch(fixture, {
     version: 2,
     book: fixture.book,
@@ -235,20 +314,18 @@ test('#10 拖图 → img/ 落盘 + 插入 `![]()`，原字节只增不改', asyn
   await win.waitForSelector('.cm-content')
   const before = await readFile(join(fixture.book, 'a.md'), 'utf8')
 
-  // 直接驱动 main 那一段（拖拽的 DataTransfer 在 Playwright 里造不出带 path 的 File）
-  const imported = await win.evaluate(
-    async ([src, book]) =>
-      (globalThis as unknown as {
-        api: { files: { importImage(s: string, b: string): Promise<{ ok: boolean; value?: string }> } }
-      }).api.files.importImage(src as string, book as string),
-    [source, fixture.book],
-  )
-  expect(imported.ok).toBe(true)
-  expect(imported.value, '落点不是 img/<时间戳>-<原名>').toMatch(/^img\/\d{10}-photo\.png$/)
-  expect(await readFile(join(fixture.book, imported.value!), 'utf8')).toBe('PNGDATA')
+  await win.evaluate(() => {
+    const dt = new DataTransfer()
+    dt.items.add(new File([new Uint8Array([1, 2, 3])], 'thing.zip', { type: 'application/zip' }))
+    document
+      .querySelector('.cm-content')
+      ?.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await win.waitForTimeout(600)
 
-  // **原字节只增不改**：这一步没碰正文
   expect(await readFile(join(fixture.book, 'a.md'), 'utf8')).toBe(before)
+  const { readdir } = await import('node:fs/promises')
+  expect(await readdir(fixture.book).then((n) => n.includes('img'))).toBe(false)
 })
 
 test('#5 更新链接：只查不改 → 用户点了才改，且只改指向旧路径的', async () => {
