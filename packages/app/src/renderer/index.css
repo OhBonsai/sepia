@@ -464,19 +464,17 @@ body {
 .sepia-home-recent:hover { color: var(--sepia-syn-link); }
 
 /* `@` 引用浮层（170 §2.1 ④）：贴着正文出现的一小列，不是对话框。 */
+/* **位置由内联 style 给**（贴着光标，见 refs.tsx）——这里只管长相。
+   钉在窗口底部中央是错的：那是命令面板的位置，不是行内浮层的位置。 */
 .sepia-refs {
   position: fixed;
-  bottom: 24px;
-  left: 50%;
   z-index: 20;
-  width: 360px;
   max-height: 40vh;
   padding: 4px;
   overflow-y: auto;
   background: var(--sepia-paper);
   border: 1px solid var(--sepia-rule);
   border-radius: 4px;
-  transform: translateX(-50%);
 }
 
 .sepia-ref {

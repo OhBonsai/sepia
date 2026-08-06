@@ -12,12 +12,14 @@ import { matchRefs, type RefCandidate } from '@sepia/core'
 export interface RefPickerProps {
   candidates: RefCandidate[]
   query: string
+  /** 光标（那个 `@`）在视口里的位置。**行内浮层要贴着它**，不是钉在窗口某处。 */
+  anchor: { left: number; top: number; bottom: number } | null
   onPick: (candidate: RefCandidate) => void
   onClose: () => void
 }
 
 export function RefPicker(props: RefPickerProps): React.JSX.Element | null {
-  const { candidates, query, onPick, onClose } = props
+  const { candidates, query, anchor, onPick, onClose } = props
   const [index, setIndex] = useState(0)
   const matches = useMemo(() => matchRefs(candidates, query), [candidates, query])
 
@@ -52,8 +54,20 @@ export function RefPicker(props: RefPickerProps): React.JSX.Element | null {
 
   if (matches.length === 0) return null
 
+  // 贴着光标放，并且**别掉出视口**：
+  //   · 下方放不下就翻到光标上方（长文写到屏幕底部时正是这种情况）
+  //   · 右边放不下就往左推
+  const width = 360
+  const maxHeight = Math.round(globalThis.innerHeight * 0.4)
+  const left = anchor === null ? 24 : Math.max(8, Math.min(anchor.left, globalThis.innerWidth - width - 8))
+  const below = anchor === null ? 24 : anchor.bottom + 6
+  const flip = anchor !== null && below + maxHeight > globalThis.innerHeight
+  const style = flip
+    ? { left: `${left}px`, bottom: `${Math.round(globalThis.innerHeight - anchor.top + 6)}px`, width: `${width}px` }
+    : { left: `${left}px`, top: `${Math.round(below)}px`, width: `${width}px` }
+
   return (
-    <div className="sepia-refs" data-sepia-refs={String(matches.length)}>
+    <div className="sepia-refs" data-sepia-refs={String(matches.length)} style={style}>
       {matches.map((candidate, at) => (
         <div
           key={candidate.path}

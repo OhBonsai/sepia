@@ -160,6 +160,13 @@ export interface MountedEditor {
   /** ⌘⇧H 还白（W10）：全隐 ↔ 全显来回切。返回切换后的「是否全隐」。 */
   toggleBadges(): boolean
   /**
+   * 某个位置在屏幕上的坐标（视口坐标系）。`@` 的行内浮层靠它贴着光标出现。
+   *
+   * 只给坐标、不给 `EditorView`——**够用的最小面**。给了 view，不变量 3 的
+   * 类型保证当场作废（拿到 view 就能 dispatch，绕过 CAS）。
+   */
+  coordsAt(pos: number): { left: number; top: number; bottom: number } | null
+  /**
    * 用户发起的区间替换（`@` 引用插入，170 §2.1 ④）。
    *
    * **走的是与落笔同一条 CAS 通道**——不是另开一条写路径。理由：
@@ -235,6 +242,10 @@ export function mountEditor(options: MountOptions): MountedEditor {
     // 徽章：传全量。徽章是由线程按当前正文**算出来的**，不是增量维护的状态——
     // 算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug。
     showBadges: (spots) => view.dispatch({ effects: setBadges.of(spots) }),
+    coordsAt: (pos) => {
+      const rect = view.coordsAtPos(pos)
+      return rect === null ? null : { left: rect.left, top: rect.top, bottom: rect.bottom }
+    },
     // 与落笔同一条 CAS 实现；`run` 传空打点器——`@` 插入不是 markup，
     // 不该往 m0–m5 那条时间轴上写东西（150 纪律 22 的口径不许混）
     replaceGuarded: (request) => applyMarkup(view, request, { mark: () => undefined }),

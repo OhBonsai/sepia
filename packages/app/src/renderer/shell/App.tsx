@@ -90,7 +90,11 @@ export function App(): React.JSX.Element {
    * 标题后台补，补好之前按纯文件名匹配（**那是常态路径，不是降级**）。
    */
   const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
-  const [refState, setRefState] = useState<{ from: number; query: string } | null>(null)
+  const [refState, setRefState] = useState<{
+    from: number
+    query: string
+    anchor: { left: number; top: number; bottom: number } | null
+  } | null>(null)
   /**
    * 更新链接（§2.1 ⑥ / T-31）：重命名或移动之后的提示。
    * **用户主动点，不自动改**——自动改等于在用户没看见的地方动他的字。
@@ -731,6 +735,7 @@ export function App(): React.JSX.Element {
         <RefPicker
           candidates={refCandidates}
           query={refState.query}
+          anchor={refState.anchor}
           onClose={() => setRefState(null)}
           onPick={(candidate) => {
             const instance = editor.current
@@ -884,7 +889,16 @@ export function App(): React.JSX.Element {
             const at = instance.selection().from
             const before = next.slice(Math.max(0, at - 40), at)
             const match = /@([^\s@[\]()]*)$/.exec(before)
-            setRefState(match === null ? null : { from: at - match[0].length, query: match[1] ?? '' })
+            setRefState(
+              match === null
+                ? null
+                : {
+                    from: at - match[0].length,
+                    query: match[1] ?? '',
+                    // 锚点取那个 `@` 的位置：列表从它下面长出来，跟着光标走
+                    anchor: instance.coordsAt(at - match[0].length),
+                  },
+            )
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor

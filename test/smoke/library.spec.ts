@@ -197,6 +197,20 @@ test('#9 `@` 引用：出列表 → 选中插入标准 md 链接 → 链接可�
   await expect(picker, '按下 @ 之后没有列表').toBeVisible({ timeout: 3_000 })
   await expect(win.locator('[data-sepia-ref="b.md"]')).toHaveCount(1)
 
+  // 一 b：**列表要贴着光标**（行内浮层，§2.1 ④）。真人轮实测：它当时钉在窗口
+  // 底部中央——那是命令面板的位置，不是行内浮层的位置。
+  // 破坏方式：把定位改回 `bottom:24px; left:50%` → 与光标的距离必然超阈值，本条红。
+  const geometry = await win.evaluate(() => {
+    const popup = document.querySelector('.sepia-refs')?.getBoundingClientRect()
+    const caret = document.querySelector('.cm-cursor-primary')?.getBoundingClientRect()
+    if (popup === undefined || caret === undefined) return null
+    return { dx: Math.abs(popup.left - caret.left), dy: popup.top - caret.bottom, popupTop: popup.top }
+  })
+  expect(geometry, '取不到浮层或光标的位置').not.toBeNull()
+  expect(geometry!.dx, '浮层没跟着光标横向对齐').toBeLessThan(40)
+  expect(geometry!.dy, '浮层没有紧跟在光标下方').toBeGreaterThanOrEqual(0)
+  expect(geometry!.dy, '浮层离光标太远——它被钉在别处了').toBeLessThan(40)
+
   // 二：回车插入——**标准 markdown 链接**，不是 wiki 链接（守 markdown 纯度）
   await win.keyboard.press('Enter')
   await expect(picker).toHaveCount(0)
