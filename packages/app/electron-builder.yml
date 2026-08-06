@@ -9,6 +9,18 @@ directories:
   output: dist
   buildResources: build
 
+# 双击 .md / 拖到应用图标（T-30 游离 page，120 §1.1 问题二在 Stage 6a 兑现）。
+# 没有这一段，系统压根不会给我们发 `open-file`——main 里那个 handler 从 Stage 0
+# 就在，但「代码在」不等于「功能在」。
+# role: Editor 而不是 Viewer：Sepia 是编辑器，注册成查看器会让"打开方式"里排在后面。
+fileAssociations:
+  - ext:
+      - md
+      - markdown
+    name: Markdown
+    role: Editor
+    mimeType: text/markdown
+
 # 不带上包名 @sepia/app，否则产物会叫 "@sepia/app_0.0.0_amd64.deb"。
 artifactName: ${productName}-${version}-${arch}.${ext}
 

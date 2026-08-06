@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   commitIdleMs: 8_000,
   commitIntervalMs: 300_000,
   anchorFuzzyThreshold: 0.75,
+  watcher: { usePolling: false },
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
@@ -54,6 +55,7 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
   const provider = raw['provider']
   const model = raw['model']
   const contextScope = raw['contextScope']
+  const watcher = raw['watcher']
   const KNOWN = new Set([
     'version',
     'theme',
@@ -66,6 +68,7 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'commitIdleMs',
     'commitIntervalMs',
     'anchorFuzzyThreshold',
+    'watcher',
   ])
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
@@ -91,6 +94,7 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
       commitIntervalMs: positiveInt(raw['commitIntervalMs'], DEFAULT_CONFIG.commitIntervalMs),
       // 相似度是 0–1 的小数，positiveInt 收不了它——单独一条：范围外一律退回默认
       anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
+      watcher: { usePolling: isRecord(watcher) && watcher['usePolling'] === true },
     },
     unknown: preserved,
   }
@@ -116,6 +120,7 @@ export function configToDisk(
   if (config.anchorFuzzyThreshold !== DEFAULT_CONFIG.anchorFuzzyThreshold) {
     out['anchorFuzzyThreshold'] = config.anchorFuzzyThreshold
   }
+  if (config.watcher.usePolling !== DEFAULT_CONFIG.watcher.usePolling) out['watcher'] = config.watcher
   return out
 }
 

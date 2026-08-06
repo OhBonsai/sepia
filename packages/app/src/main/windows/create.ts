@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AppConfig } from '@sepia/core'
 
 import { mark } from '../services/perf.ts'
 import * as theme from '../services/theme.ts'
+import { reconcile } from '../services/watcher.ts'
 import * as registry from './registry.ts'
 
 // 纪律 13：窗口带 backgroundColor，主题在首帧前就位，避免白闪。
@@ -61,6 +62,13 @@ export function createWindow(): BrowserWindow {
   window.once('ready-to-show', () => {
     window.show()
     mark('t3')
+  })
+
+  // 对账兜底的触发点（架构 §4.9：**必须有对账兜底**）。日常靠 watcher 事件，
+  // 切回窗口时校准一次——watcher 整体失效（限额撞满、网络盘）时这就是唯一的眼睛。
+  // 挂在窗口上而不是 app 的 `browser-window-focus`：将来多窗口各盯各的 page。
+  window.on('focus', () => {
+    void reconcile()
   })
 
   // 外链一律交给系统浏览器，不在应用内开窗。

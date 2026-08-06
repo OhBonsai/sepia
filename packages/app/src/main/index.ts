@@ -6,13 +6,21 @@ import { homedir } from 'node:os'
 
 import { app, BrowserWindow } from 'electron'
 
-import { markdownPathsFrom, queuePaths, takePendingPaths } from './argv.ts'
-import { broadcastAgent, broadcastTheme, registerIpc, stopSavePipeline } from './ipc/index.ts'
+import { markdownPathsFrom, peekPendingPaths, queuePaths } from './argv.ts'
+import {
+  broadcastAgent,
+  broadcastFiles,
+  broadcastTheme,
+  registerIpc,
+  savePipeline,
+  stopSavePipeline,
+} from './ipc/index.ts'
 import { startEngine, stopEngine } from './services/agent-supervisor.ts'
 import { loadConfig, saveConfig, type LoadedConfig } from './services/config.ts'
 import { loadCredentials } from './services/credentials.ts'
 import { sepiaPaths, type SepiaPaths } from './services/paths.ts'
 import * as theme from './services/theme.ts'
+import { configureWatcher, stopWatcher } from './services/watcher.ts'
 import * as registry from './windows/registry.ts'
 import { createWindow, setMarkupConfig } from './windows/create.ts'
 
@@ -75,7 +83,7 @@ function armSmoke(window: BrowserWindow): BrowserWindow {
   if (!SMOKE_WINDOWS) return window
 
   window.webContents.once('did-finish-load', () => {
-    const pending = takePendingPaths()
+    const pending = peekPendingPaths()
     process.stdout.write(
       `sepia: window ready, registry=${registry.count()}, pending=${JSON.stringify(pending)}\n`,
     )
@@ -95,24 +103,40 @@ function armSmoke(window: BrowserWindow): BrowserWindow {
   return window
 }
 
+// 单实例锁按 Electron 的 `userData` 定，而 **macOS 上 `app.getPath` 无视 `$HOME`**
+// （main 里那条 `os.homedir()` 的注释说的是同一件事）。于是 smoke 的 HOME 隔离对它无效：
+// 两个并行的 smoke 会互相抢同一把锁，后启动的那个直接 `app.quit()`——**一扇窗都不开**，
+// 表现为 `firstWindow` 超时，看起来像"应用起不来"，实际是 T-29 在正确工作。
+// Stage 6a 实测撞出来的：L2/L3 两条并行线各自跑 smoke 时必然踩（170 §1.9）。
+// 只在显式给了这个变量时改（真实用户永远走默认路径）。
+const testUserData = process.env['SEPIA_TEST_USER_DATA']
+if (testUserData !== undefined && testUserData !== '') app.setPath('userData', testUserData)
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv, workingDirectory) => {
-    queuePaths(markdownPathsFrom(argv, workingDirectory))
-    armSmoke(createWindow())
+    const paths = markdownPathsFrom(argv, workingDirectory)
+    queuePaths(paths)
+    // 一个路径一扇窗（T-29 的 VS Code 模型）；没带路径就开一扇空窗。
+    // 队列在 `session/get` 里逐个被取，所以窗口数必须与路径数对齐——
+    // 只开一扇的话第二个路径会静默留在队列里，下次启动才莫名弹出来。
+    for (let index = 0; index < Math.max(1, paths.length); index += 1) armSmoke(createWindow())
   })
 
-  // macOS 双击 .md / 拖到图标。
-  // **注意：当前没有注册为 .md 处理器**——`electron-builder.yml` 里没有
-  // `fileAssociations`，所以系统不会给我们发这个事件，只有 `open -a Sepia x.md`
-  // 这种显式指定能触发。`fileAssociations` 与游离 page（T-30）一并归 **Stage 6**，
-  // 见 120 §1.1 问题二。handler 留着是因为它本身是对的，删了下次还得重写——
-  // 但「代码在」不等于「功能在」。
+  // macOS 双击 .md / 拖到图标 / `open -a Sepia x.md`（120 §1.1 问题二，**此刻兑现**）。
+  //
+  // `fileAssociations` 已补进 electron-builder.yml，所以系统从此真会发这个事件；
+  // 三个入口（argv / open-file / 二次启动转交）在 `session/get` 汇成同一条通道。
+  // **双击这条的人工验证依赖打包**（未打包的应用没在 LaunchServices 里注册），
+  // 挂在 .dmg 债上一并验；`open -a` 与 argv 两条本期就能验（170 §1.1 三）。
+  //
+  // 事件可能早于 `whenReady`（冷启动双击就是这样）：那时只入队，窗口由 whenReady 建。
+  // 已经在跑就为它开一扇新窗——不复用当前窗，因为当前窗里可能有没存的字。
   app.on('open-file', (event, path) => {
     event.preventDefault()
     queuePaths([path])
-    if (app.isReady() && registry.count() === 0) armSmoke(createWindow())
+    if (app.isReady()) armSmoke(createWindow())
   })
 
   app.on('window-all-closed', () => {
@@ -140,6 +164,17 @@ if (!app.requestSingleInstanceLock()) {
       registerIpc(paths, loaded.config)
       broadcastTheme()
       broadcastAgent()
+      broadcastFiles()
+      // 网络盘逃生舱（架构 §4.9）。watcher 本体的挂载在 renderer 打开 page 之后
+      // （见 ipc 的 `file/read`）——它属于异步路径，纪律 12 不许它挡光标。
+      //
+      // **共享接缝在这里接上**（160/170 §1.1〇-3）：L2 的写盘管线登记自写，
+      // L3 的 watcher 只 claim。装配放在这儿而不是让 watcher 去 import ipc——
+      // ipc 已经 import 了 watcher，反向 import 会成环（check:deps 的 no-circular）。
+      configureWatcher({
+        usePolling: loaded.config.watcher.usePolling,
+        selfWrites: () => savePipeline()?.selfWrites ?? null,
+      })
 
       queuePaths(markdownPathsFrom(process.argv, process.cwd()))
       armEngine(armSmoke(createWindow()), paths, loaded)
@@ -151,6 +186,7 @@ if (!app.requestSingleInstanceLock()) {
         // 而那时窗口已经没了，git 子进程却还在跑（架构 §4.2：commit 与纸解耦，
         // 解耦的另一半是"纸没了它也该停"）。
         stopSavePipeline()
+        void stopWatcher()
       })
     },
     (error: unknown) => {

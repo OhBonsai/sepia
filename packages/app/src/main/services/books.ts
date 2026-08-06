@@ -1,5 +1,5 @@
-import { realpath } from 'node:fs/promises'
-import { join } from 'node:path'
+import { realpath, stat } from 'node:fs/promises'
+import { dirname, join, parse } from 'node:path'
 
 import {
   ANCHOR_FILE_VERSION,
@@ -78,4 +78,50 @@ export async function openBookStore(paths: SepiaPaths, bookPath: string): Promis
       }
     },
   }
+}
+
+// ── Stage 6a：book 身份的另一半——**一个 page 属于哪个 book，以及它是否游离**（T-30）──
+//
+// 与上面那半刻意同住一个文件、刻意不互相调用：上半是「这个 book 的私产存哪」（要 book-id），
+// 下半是「这个 page 有没有 book」（只要根在哪）。Stage 6a 只需要下半，
+// 而 b 期的文件树会同时用到两半。
+//
+// 判据是 `.git`：架构与 160 都把「book = git repo」当既有事实（一本 book = 文件夹 = git repo）。
+// 于是「游离 page」= 不在任何 git repo 里的 .md，正好与 T-30 的降级语义对齐：
+// 无 book 则无 git（无版本、无徽章）、无 `@` 引用，**纸本身完全可写**（不变量 1 同构）。
+
+/** 找到包含该 page 的 book 根；不在任何 book 里返回 null（= 游离 page）。 */
+export async function findBookRoot(pagePath: string): Promise<string | null> {
+  const root = parse(pagePath).root
+  let dir = dirname(pagePath)
+  // 走到文件系统根就停。不设深度上限：路径本身有限，循环必然终止。
+  for (;;) {
+    if (await isRepo(dir)) return dir
+    if (dir === root) return null
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
+/** `.git` 既可能是目录（常规 repo）也可能是文件（worktree / submodule）——两者都算。 */
+async function isRepo(dir: string): Promise<boolean> {
+  try {
+    await stat(join(dir, '.git'))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export interface PageContext {
+  page: string
+  /** book 根；null = 游离。 */
+  book: string | null
+  detached: boolean
+}
+
+export async function pageContext(pagePath: string): Promise<PageContext> {
+  const book = await findBookRoot(pagePath)
+  return { page: pagePath, book, detached: book === null }
 }

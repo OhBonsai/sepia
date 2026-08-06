@@ -46,6 +46,14 @@ export interface AppConfig {
   commitIntervalMs: number
   /** 锚点模糊匹配的相似度下限。调低即更容易误挂（架构 §4.2「宁可孤儿不误挂」）。 */
   anchorFuzzyThreshold: number
+  /** 文件监听（Stage 6a）。只放真读的字段——见架构 §4.5 那句「不是建设清单」。 */
+  watcher: {
+    /**
+     * 网络盘的逃生舱（架构 §4.9 / T-26）：`fs.watch` 在网络盘上事件常常不来，
+     * 打开它改用轮询。默认关——轮询在本地盘上是纯粹的耗电。
+     */
+    usePolling: boolean
+  }
 }
 
 /**

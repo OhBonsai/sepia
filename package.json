@@ -9,6 +9,7 @@
     ],
     "catalog": {
       "@opencode-ai/sdk": "1.18.13",
+      "chokidar": "4.0.3",
       "jsonc-parser": "3.3.1",
       "@codemirror/commands": "^6.10.4",
       "@codemirror/lang-markdown": "^6.5.1",

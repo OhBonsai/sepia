@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
 
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 
 import type { TextPartInput } from '@sepia/agent'
 import { TASKS, type TaskType } from '@sepia/agent/tasks'
@@ -8,17 +8,21 @@ import {
   asBookDirectory,
   type AppConfig,
   type BookDirectory,
+  type FileNotice,
   type IoResult,
   type PerfMark,
   type SessionState,
 } from '@sepia/core'
 
+import { takeNextPendingPath } from '../argv.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
+import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
 import { createSavePipeline, type SavePipeline } from '../services/save-pipeline.ts'
 import { mark, printReport, report } from '../services/perf.ts'
 import * as supervisor from '../services/agent-supervisor.ts'
 import * as theme from '../services/theme.ts'
+import { onFileNotice, refreshStamp, watchPage } from '../services/watcher.ts'
 import type { SepiaPaths } from '../services/paths.ts'
 
 // IPC handler 注册。REST 风格命名：`<域>/<动作>`。
@@ -63,7 +67,13 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     if (typeof path !== 'string' || !isAbsolute(path)) {
       return { ok: false, reason: 'path must be absolute' }
     }
-    return readText(path)
+    const result = await readText(path)
+    // **「renderer 打开了哪个 page」的信号就取自这里**（Stage 6a）。
+    // 不为它在桥上新开一个 `files.watch(path)`：那会多一个 renderer 必须记得调用的
+    // 环节，忘了调就静默失去监听；而 `file/read` 是 renderer 打开 page 的唯一通道，
+    // 事实本来就流经这里。读盘失败就不挂——挂一个不存在的文件没有意义。
+    if (result.ok) void watchPage(path)
+    return result
   })
 
   // **`file/write` 是 ⌘S 全文保存专用通道**（120 §1.3）。
@@ -77,7 +87,11 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     if (typeof content !== 'string') return { ok: false, reason: 'content must be a string' }
     // 走管线而不是直接 atomicWrite：写盘成功之后还有两件事——登记自写（共享接缝）、
     // 拨动 commit 触发。**renderer 对这两件事一无所知**，它只知道自己保存了一次。
-    return pipeline === null ? atomicWrite(path, content) : pipeline.write(path, content)
+    const written = pipeline === null ? await atomicWrite(path, content) : await pipeline.write(path, content)
+    // 自写之后立刻刷新对账印记。不刷的话：保存 → 切走 → 切回来 → focus 对账拿旧印记
+    // 一比，把自己刚存的东西报成外部变更。回声抑制只管事件那条路，对账这条要自己刷。
+    if (written.ok) await refreshStamp(path)
+    return written
   })
 
   ipcMain.handle('dialog/open-markdown', async (event): Promise<string | null> => {
@@ -91,7 +105,40 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
-  ipcMain.handle('session/get', async (): Promise<SessionState> => loadSession(paths))
+  // ── files 域（Stage 6a）：服务层 + 命令，UI 归 b 期 ─────────────────────────
+  // 四个动作都改用户的文件，所以判定与落盘全在 services/files.ts（可单测），
+  // 这一层只做「解参数 + 把 Electron 的能力递进去」。
+  ipcMain.handle('files/create', async (_event, path: unknown, content: unknown): Promise<IoResult<string>> =>
+    createPage(path, typeof content === 'string' ? content : ''),
+  )
+
+  ipcMain.handle('files/rename', async (_event, from: unknown, to: unknown): Promise<IoResult<string>> =>
+    renamePage(from, to),
+  )
+
+  ipcMain.handle('files/move', async (_event, from: unknown, directory: unknown): Promise<IoResult<string>> =>
+    movePage(from, directory),
+  )
+
+  // `shell.trashItem` 只在这里出现：services/files.ts 收它作参数，好让"删除必须进
+  // 回收站、不许退化成 unlink"这条能在不起 Electron 的单测里被盯住（架构 §4.9）。
+  ipcMain.handle('files/trash', async (_event, path: unknown): Promise<IoResult<void>> =>
+    trashPage(path, (target) => shell.trashItem(target)),
+  )
+
+  ipcMain.handle('session/get', async (): Promise<SessionState> => {
+    const session = await loadSession(paths)
+    // 三入口（argv / `open-file` / 二次启动转交）的 page 在这里汇入（120 §1.1 问题二）。
+    // 不为它新开桥项：renderer 启动本来就要问一次 session，"这次该打开哪个 page"
+    // 正是 session 的语义。**队列在此被消费**——armSmoke 那边只许 peek。
+    //
+    // 光标归零：命令行/双击打开的是"这个文件"，不是"上次那个位置"。
+    // 而这个 page 可能压根不属于任何 book（游离，T-30）——那条降级由 main 侧判定，
+    // renderer 什么都不必知道：纸完全可写，与不变量 1 同构。
+    const first = takeNextPendingPath()
+    if (first !== null) return { ...session, page: first, cursor: 0, scrollTop: 0 }
+    return session
+  })
 
   ipcMain.handle('session/set', async (_event, state: unknown): Promise<void> => {
     if (typeof state !== 'object' || state === null) return
@@ -203,6 +250,19 @@ export function broadcastTheme(): () => void {
     for (const window of BrowserWindow.getAllWindows()) {
       window.setBackgroundColor(theme.backgroundColor())
       window.webContents.send('theme/changed', next)
+    }
+  })
+}
+
+/**
+ * 文件域通知推给所有窗口（Stage 6a）：外部变更与 watcher 降级走同一个通道。
+ * 判定不在这里——main 只报事实，`decideExternalChange` 在 core，消费在 renderer
+ * （只有那边知道脏不脏、光标在哪）。
+ */
+export function broadcastFiles(): () => void {
+  return onFileNotice((notice: FileNotice) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('files/external-change', notice)
     }
   })
 }
