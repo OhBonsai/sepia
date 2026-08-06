@@ -24,6 +24,13 @@ interface Bridge {
     rename(from: string, to: string): Promise<IoResult<string>>
     move(from: string, directory: string): Promise<IoResult<string>>
     trash(path: string): Promise<IoResult<void>>
+    importImage(source: string, book: string): Promise<IoResult<string>>
+    updateLinks(
+      book: string,
+      from: string,
+      to: string,
+      apply: boolean,
+    ): Promise<IoResult<{ files: { page: string; count: number }[]; total: number }>>
     onExternalChange(cb: (notice: FileNotice) => void): () => void
   }
   threads: {
@@ -55,6 +62,9 @@ export const api = {
   renameFile: (from: string, to: string) => bridge.files.rename(from, to),
   moveFile: (from: string, directory: string) => bridge.files.move(from, directory),
   trashFile: (path: string) => bridge.files.trash(path),
+  importImage: (source: string, book: string) => bridge.files.importImage(source, book),
+  updateLinks: (book: string, from: string, to: string, apply: boolean) =>
+    bridge.files.updateLinks(book, from, to, apply),
   onExternalChange: (cb: (notice: FileNotice) => void) => bridge.files.onExternalChange(cb),
   loadThreads: (directory: string) => bridge.threads.load(directory),
   saveThreads: (directory: string, threads: Thread[]) => bridge.threads.save(directory, threads),

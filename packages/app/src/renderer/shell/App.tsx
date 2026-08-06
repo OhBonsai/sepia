@@ -42,7 +42,7 @@ import { Home } from '../library/home.tsx'
 import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
-import { registerCommand } from '../commands/registry.ts'
+import { execute, registerCommand } from '../commands/registry.ts'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
@@ -91,6 +91,17 @@ export function App(): React.JSX.Element {
    */
   const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
   const [refState, setRefState] = useState<{ from: number; query: string } | null>(null)
+  /**
+   * 更新链接（§2.1 ⑥ / T-31）：重命名或移动之后的提示。
+   * **用户主动点，不自动改**——自动改等于在用户没看见的地方动他的字。
+   */
+  const [linkPlan, setLinkPlan] = useState<{
+    from: string
+    to: string
+    files: { page: string; count: number }[]
+    total: number
+    expanded: boolean
+  } | null>(null)
   /** 点徽章进来的那条线程——面板要**定位到它**，不是只把面板打开（W11 两条路都要通）。 */
   const [focusThread, setFocusThread] = useState<string | null>(null)
 
@@ -278,6 +289,43 @@ export function App(): React.JSX.Element {
     setSession(next)
     void api.setSession(next)
   }, [withCurrentPosition])
+
+  /** 重命名/移动之后查一遍引用。**只查不改**，查到了才出横条。 */
+  const checkLinks = useCallback(async (from: string, to: string): Promise<void> => {
+    const book = sessionRef.current.book
+    if (book === null) return
+    const plan = await api.updateLinks(book, from, to, false)
+    if (!plan.ok || plan.value.total === 0) return
+    setLinkPlan({ from, to, files: plan.value.files, total: plan.value.total, expanded: false })
+  }, [])
+
+  /**
+   * 收图（§2.1 ⑤，架构 §4.9 落点表）：编辑区**只收图片**，拖别的一律无效。
+   *
+   * 插入走 `replaceGuarded`（零长度区间 = 纯插入），与 `@` 同一条 CAS 通道——
+   * 仍然没有第二条写正文的路。
+   */
+  const dropImages = useCallback(
+    async (paths: string[]): Promise<void> => {
+      const book = sessionRef.current.book
+      const instance = editor.current
+      if (book === null || instance === null || paths.length === 0) return
+      for (const source of paths) {
+        const imported = await api.importImage(source, book)
+        if (!imported.ok) continue
+        const at = instance.selection().from
+        instance.replaceGuarded({
+          range: { from: at, to: at },
+          expectedText: '',
+          replacement: `![](${imported.value})`,
+        })
+      }
+      draft.current = instance.read()
+      setDirty(true)
+      autosave.current?.bump()
+    },
+    [],
+  )
 
   // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
   useEffect(() => {
@@ -508,6 +556,11 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'k') {
         event.preventDefault()
         summon()
+      } else if (event.key === 'Backspace') {
+        // ⌘⌫ 移到回收站（§2.1 ②：**还 6a 债 A 的入口半**——此前这条命令没绑键，
+        // 人工轮连入口都找不到）。删除没有自绘确认：回收站本身就是撤销通道
+        event.preventDefault()
+        void execute('files.trash')
       } else if (event.key === 'b') {
         event.preventDefault()
         setSidebarOpen((openNow) => !openNow)
@@ -558,6 +611,11 @@ export function App(): React.JSX.Element {
     },
     position: () => ({ cursor: editor.current?.selection().from ?? 0, scrollTop: sessionDraft.current.scrollTop }),
     onOpen: (next) => void open(next),
+    onMoved: (from, to) => {
+      const book = sessionRef.current.book
+      if (book === null) return
+      void checkLinks(tabRelative(book, from), tabRelative(book, to))
+    },
     onGone: () => {
       // 用户自己删掉了当前 page（不是外部删除——那条走 detach，内容留在纸上）
       setPage(null)
@@ -617,6 +675,43 @@ export function App(): React.JSX.Element {
                 </button>
               ))}
             </span>
+          )}
+        </div>
+      )}
+      {linkPlan !== null && (
+        <div className="sepia-strip" data-sepia-links={String(linkPlan.total)}>
+          {`${t('links.pending')} ${linkPlan.total}`}
+          <span className="sepia-conflict-choices">
+            <button
+              type="button"
+              data-sepia-links-expand="true"
+              onClick={() => setLinkPlan({ ...linkPlan, expanded: !linkPlan.expanded })}
+            >
+              {t('links.list')}
+            </button>
+            <button
+              type="button"
+              data-sepia-links-apply="true"
+              onClick={() => {
+                const book = sessionRef.current.book
+                if (book === null) return
+                // 用户点了才改。改完与重命名进**同一个 commit**——
+                // 静默 commit 的触发器会把这一批改动一起收走（架构 §4.2 的时间线）
+                void api.updateLinks(book, linkPlan.from, linkPlan.to, true).then(() => setLinkPlan(null))
+              }}
+            >
+              {t('links.apply')}
+            </button>
+          </span>
+          {linkPlan.expanded && (
+            /* **执行前先把清单摊开**：要改谁、改几处，看得见才敢点 */
+            <div className="sepia-links-list" data-sepia-links-list="open">
+              {linkPlan.files.map((file) => (
+                <div key={file.page} data-sepia-links-file={file.page}>
+                  {file.page} · {file.count}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -720,7 +815,24 @@ export function App(): React.JSX.Element {
             onOpen={(relative) => void openInTab(tabPath(session.book, relative))}
           />
         )}
-        <div className="sepia-paper-area">
+        <div
+          className="sepia-paper-area"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            // **编辑区只收图片**（架构 §4.9 落点表）：拖 .md 进来归窗口空白那条路，
+            // 拖别的一切无效——静默无效比"猜用户想干什么"好
+            const images = [...event.dataTransfer.files].filter((file) => file.type.startsWith('image/'))
+            if (images.length === 0) return
+            event.preventDefault()
+            void dropImages(images.map((file) => (file as File & { path: string }).path).filter(Boolean))
+          }}
+          onPaste={(event) => {
+            const images = [...event.clipboardData.files].filter((file) => file.type.startsWith('image/'))
+            if (images.length === 0) return
+            event.preventDefault()
+            void dropImages(images.map((file) => (file as File & { path: string }).path).filter(Boolean))
+          }}
+        >
       {page === null ? (
         <Home
           book={session.book}

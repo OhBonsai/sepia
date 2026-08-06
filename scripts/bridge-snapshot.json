@@ -18,7 +18,8 @@
     "Stage 5b 的增长：api.threads.load/save 两项 + api.git.diff 一项 = 25 → 28。",
     "threads 没有 delete——删除是 save 一份不含它的表；git 域只读，没有写路径（不变量 3）。",
     "Stage 6b 的增长：api.library.scan/recents/titles 三项 + api.dialog.openDirectory 一项 = 28 → 32。",
-    "library 域只读（扫描/最近/标题），没有写路径；文件操作仍走 files 域——不变量 3 的形态防线。"
+    "library 域只读（扫描/最近/标题），没有写路径；文件操作仍走 files 域——不变量 3 的形态防线。",
+    "Stage 6b 续：api.files.importImage / api.files.updateLinks 两项 = 32 → 34（§2.3 申报 +5，实际 +6：openDirectory 未计入原申报，见 170 §2.9）。"
   ],
   "surface": [
     "api.agent.interrupt",
@@ -38,10 +39,12 @@
     "api.file.read",
     "api.file.write",
     "api.files.create",
+    "api.files.importImage",
     "api.files.move",
     "api.files.onExternalChange",
     "api.files.rename",
     "api.files.trash",
+    "api.files.updateLinks",
     "api.git.diff",
     "api.library.recents",
     "api.library.scan",

@@ -1,7 +1,18 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 
-import { limitTree, pushRecent, titleOf, type IoResult, type RefCandidate, type TreeEntry, type TreeScan } from '@sepia/core'
+import {
+  applyLinkUpdates,
+  findLinks,
+  imageTarget,
+  limitTree,
+  pushRecent,
+  titleOf,
+  type IoResult,
+  type RefCandidate,
+  type TreeEntry,
+  type TreeScan,
+} from '@sepia/core'
 
 import { atomicWrite, readTextIfExists } from './fsio.ts'
 import { openBookStore } from './books.ts'
@@ -113,4 +124,74 @@ export async function touchRecent(
   const file: RecentsFile = { version: RECENTS_VERSION, pages: next }
   const written = await atomicWrite(join(store.dir, 'recents.json'), JSON.stringify(file, null, 2))
   return written.ok ? { ok: true, value: next } : written
+}
+
+/**
+ * 收一张图进 book（§2.1 ⑤）：落 `img/<yyMMddHHmm>-<原名>`，返回 book 相对路径。
+ *
+ * **只增不改**：目标重名时加序号，绝不覆盖已有的图——用户拖进来的图片是他的字节。
+ */
+export async function importImage(source: string, book: string): Promise<IoResult<string>> {
+  const { copyFile, mkdir: makeDir } = await import('node:fs/promises')
+  const base = source.split('/').pop() ?? 'image'
+  let target = imageTarget(base, Date.now())
+  try {
+    await makeDir(join(book, 'img'), { recursive: true })
+    // 重名就加序号。**不覆盖**：覆盖会静默毁掉一张已经在用的图
+    for (let n = 1; n < 100; n++) {
+      try {
+        await stat(join(book, target))
+      } catch {
+        break // 不存在 → 可以用
+      }
+      const dot = target.lastIndexOf('.')
+      target = dot === -1 ? `${target}-${n}` : `${target.slice(0, dot)}-${n}${target.slice(dot)}`
+    }
+    await copyFile(source, join(book, target))
+    return { ok: true, value: target }
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+export interface LinkUpdatePlan {
+  /** 会被改到的 page（book 相对路径）与处数 */
+  files: { page: string; count: number }[]
+  total: number
+}
+
+/**
+ * 找出 book 里所有指向 `from` 的链接（§2.1 ⑥）。
+ *
+ * **只找不改**——改不改由用户点那一下决定（架构 T-31：用户主动，不自动）。
+ * `apply` 为 true 时才真写盘。
+ */
+export async function updateLinks(
+  book: string,
+  from: string,
+  to: string,
+  apply: boolean,
+  limit: number,
+): Promise<IoResult<LinkUpdatePlan>> {
+  const scan = await scanBook(book, limit)
+  const files: { page: string; count: number }[] = []
+  let total = 0
+  for (const entry of scan.entries) {
+    if (entry.kind !== 'file') continue
+    let text: string
+    try {
+      text = await readFile(join(book, entry.path), 'utf8')
+    } catch {
+      continue
+    }
+    const hits = findLinks(text, entry.path, from)
+    if (hits.length === 0) continue
+    files.push({ page: entry.path, count: hits.length })
+    total += hits.length
+    if (apply) {
+      const written = await atomicWrite(join(book, entry.path), applyLinkUpdates(text, hits, to))
+      if (!written.ok) return written
+    }
+  }
+  return { ok: true, value: { files, total } }
 }

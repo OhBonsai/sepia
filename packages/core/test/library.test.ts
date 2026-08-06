@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { limitTree, matchRefs, pushRecent, titleOf, type RefCandidate, type TreeEntry } from '../src/library/index.ts'
+import {
+  applyLinkUpdates,
+  findLinks,
+  imageTarget,
+  limitTree,
+  matchRefs,
+  pushRecent,
+  titleOf,
+  type RefCandidate,
+  type TreeEntry,
+} from '../src/library/index.ts'
 
 // 170 §2.4 #2 / #3 / #4：树上限与降级、`@` 匹配、recents 置顶截断。
 
@@ -94,5 +104,47 @@ describe('recents', () => {
     const many = Array.from({ length: 30 }, (_x, i) => `p${i}`)
     expect(pushRecent(many, 'new', 20)).toHaveLength(20)
     expect(pushRecent(many, 'new', 20)[0]).toBe('new')
+  })
+})
+
+describe('图片落点', () => {
+  it('img/<yyMMddHHmm>-<原名>：时间戳在前（天然按时间排），原名在后（还认得出）', () => {
+    const target = imageTarget('照片.png', new Date(2026, 7, 6, 21, 5).getTime())
+    expect(target).toBe('img/2608062105-照片.png')
+  })
+
+  it('空格与特殊字符替成连字符——否则 markdown 链接会断', () => {
+    expect(imageTarget('my photo (1).png', 0)).toMatch(/^img\/\d{10}-my-photo-1-.png$|^img\/\d{10}-my-photo-1.png$/)
+  })
+
+  it('名字被清空时兜一个 image，不产生 `img/2608-`', () => {
+    expect(imageTarget('***', 0)).toMatch(/-image$/)
+  })
+})
+
+describe('链接更新（§2.4 #5：只改指向旧路径的）', () => {
+  const text = '见 [甲](a.md) 与 [乙](b.md)，还有 [甲again](./a.md) 和 [别的](aa.md)。\n![图](img/x.png)\n'
+
+  it('找到所有指向旧路径的，含 `./` 写法', () => {
+    const hits = findLinks(text, 'p.md', 'a.md')
+    expect(hits).toHaveLength(2)
+    expect(hits.every((hit) => text.slice(hit.from, hit.to).endsWith('a.md'))).toBe(true)
+  })
+
+  it('**不误伤前缀相同的别的链接**——`aa.md` 不是 `a.md`', () => {
+    const hits = findLinks(text, 'p.md', 'a.md')
+    expect(hits.some((hit) => text.slice(hit.from, hit.to) === 'aa.md'), '把 aa.md 也改了').toBe(false)
+  })
+
+  it('改写从后往前，前面的替换不会打乱后面的偏移', () => {
+    const out = applyLinkUpdates(text, findLinks(text, 'p.md', 'a.md'), 'renamed.md')
+    expect(out).toContain('[甲](renamed.md)')
+    expect(out).toContain('[甲again](renamed.md)')
+    expect(out, '无关链接必须原样').toContain('[乙](b.md)')
+    expect(out, '无关链接必须原样').toContain('[别的](aa.md)')
+  })
+
+  it('没有命中就一个字节都不改', () => {
+    expect(applyLinkUpdates(text, findLinks(text, 'p.md', '不存在.md'), 'x.md')).toBe(text)
   })
 })

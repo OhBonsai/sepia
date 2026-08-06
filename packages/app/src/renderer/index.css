@@ -491,3 +491,10 @@ body {
 
 .sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
 .sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
+
+/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
+.sepia-links-list {
+  padding: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}

@@ -21,7 +21,7 @@ import {
 
 import { takeNextPendingPath } from '../argv.ts'
 import { openBookStore } from '../services/books.ts'
-import { fillTitles, readRecents, scanBook, touchRecent } from '../services/library.ts'
+import { fillTitles, importImage, readRecents, scanBook, touchRecent, updateLinks, type LinkUpdatePlan } from '../services/library.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
@@ -202,6 +202,25 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     if (!Array.isArray(items)) return { ok: false, reason: 'items must be an array' }
     return { ok: true, value: await fillTitles(dir, items as RefCandidate[]) }
   })
+
+  // 收图（§2.1 ⑤）：**只增不改**，重名加序号绝不覆盖——拖进来的图片是用户的字节。
+  ipcMain.handle('files/import-image', async (_event, source: unknown, book: unknown): Promise<IoResult<string>> => {
+    if (typeof source !== 'string' || typeof book !== 'string' || !isAbsolute(book)) {
+      return { ok: false, reason: 'bad request' }
+    }
+    return importImage(source, book)
+  })
+
+  // 更新链接（§2.1 ⑥ / T-31）：**只找不改**，改不改由用户点那一下决定。
+  ipcMain.handle(
+    'files/update-links',
+    async (_event, book: unknown, from: unknown, to: unknown, apply: unknown): Promise<IoResult<LinkUpdatePlan>> => {
+      if (typeof book !== 'string' || !isAbsolute(book) || typeof from !== 'string' || typeof to !== 'string') {
+        return { ok: false, reason: 'bad request' }
+      }
+      return updateLinks(book, from, to, apply === true, config.libraryTreeEntryLimit)
+    },
+  )
 
   ipcMain.handle('dialog/open-directory', async (event): Promise<string | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)

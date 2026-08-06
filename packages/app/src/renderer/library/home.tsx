@@ -42,7 +42,7 @@ export function Home(props: HomeProps): React.JSX.Element {
             })
           }}
         >
-          {t('home.chooseBook')}
+          {t('home.choose.book')}
         </button>
         <button
           type="button"
@@ -53,7 +53,7 @@ export function Home(props: HomeProps): React.JSX.Element {
             })
           }}
         >
-          {t('home.openPage')}
+          {t('home.open.page')}
         </button>
       </div>
 

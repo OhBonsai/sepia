@@ -188,3 +188,69 @@ test('#9 `@` 引用：出列表 → 选中插入标准 md 链接 → 链接可�
   // 标题建好时用标题作链接文字
   expect(text).toContain('[乙的标题]')
 })
+
+test('#10 拖图 → img/ 落盘 + 插入 `![]()`，原字节只增不改', async () => {
+  const fixture = await makeBook()
+  // 造一张"图片"（内容不重要，走的是复制那条路）
+  const source = join(fixture.home, 'photo.png')
+  await writeFile(source, 'PNGDATA', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+  const before = await readFile(join(fixture.book, 'a.md'), 'utf8')
+
+  // 直接驱动 main 那一段（拖拽的 DataTransfer 在 Playwright 里造不出带 path 的 File）
+  const imported = await win.evaluate(
+    async ([src, book]) =>
+      (globalThis as unknown as {
+        api: { files: { importImage(s: string, b: string): Promise<{ ok: boolean; value?: string }> } }
+      }).api.files.importImage(src as string, book as string),
+    [source, fixture.book],
+  )
+  expect(imported.ok).toBe(true)
+  expect(imported.value, '落点不是 img/<时间戳>-<原名>').toMatch(/^img\/\d{10}-photo\.png$/)
+  expect(await readFile(join(fixture.book, imported.value!), 'utf8')).toBe('PNGDATA')
+
+  // **原字节只增不改**：这一步没碰正文
+  expect(await readFile(join(fixture.book, 'a.md'), 'utf8')).toBe(before)
+})
+
+test('#5 更新链接：只查不改 → 用户点了才改，且只改指向旧路径的', async () => {
+  const fixture = await makeBook()
+  await writeFile(join(fixture.book, 'a.md'), '见 [乙](b.md) 和 [别的](bb.md)。\n', 'utf8')
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+
+  const call = async (apply: boolean): Promise<{ ok: boolean; value?: { total: number } }> =>
+    win.evaluate(
+      async ([book, doApply]) =>
+        (globalThis as unknown as {
+          api: {
+            files: {
+              updateLinks(b: string, f: string, t: string, a: boolean): Promise<{ ok: boolean; value?: { total: number } }>
+            }
+          }
+        }).api.files.updateLinks(book as string, 'b.md', 'renamed.md', doApply as boolean),
+      [fixture.book, apply],
+    )
+
+  // 一：只查不改——**磁盘一个字节都不许动**（T-31：用户主动）
+  const probe = await call(false)
+  expect(probe.value?.total).toBe(1)
+  expect(await readFile(join(fixture.book, 'a.md'), 'utf8')).toContain('[乙](b.md)')
+
+  // 二：点了才改，且 bb.md 不许被误伤
+  await call(true)
+  const after = await readFile(join(fixture.book, 'a.md'), 'utf8')
+  expect(after).toContain('[乙](renamed.md)')
+  expect(after, '误改了无关链接——比漏更新严重得多').toContain('[别的](bb.md)')
+})

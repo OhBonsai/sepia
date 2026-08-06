@@ -21,6 +21,11 @@ export interface FileCommandContext {
   onOpen: (path: string) => void
   /** 当前 page 被移走/删掉后没有东西可打开时的收尾。 */
   onGone: () => void
+  /**
+   * 重命名/移动完成（T-31 / §2.1 ⑥）。**只是告知**——查引用与改不改都在上层，
+   * 这里绝不自动改别人的文件。
+   */
+  onMoved?: (from: string, to: string) => void
 }
 
 function directoryOf(path: string): string {
@@ -69,7 +74,10 @@ export function registerFileCommands(context: () => FileCommandContext): void {
       const to = argString(arg, 'to')
       if (page === null || to === null) return
       const renamed = await api.renameFile(page, resolveTarget(page, to))
-      if (renamed.ok) onOpen(renamed.value)
+      if (!renamed.ok) return
+      onOpen(renamed.value)
+      // T-31：改完名去查一遍引用。**只查，不改**——改不改由用户点横条那一下决定
+      context().onMoved?.(page, renamed.value)
     },
   })
 
@@ -81,7 +89,9 @@ export function registerFileCommands(context: () => FileCommandContext): void {
       const directory = argString(arg, 'directory')
       if (page === null || directory === null) return
       const moved = await api.moveFile(page, directory)
-      if (moved.ok) onOpen(moved.value)
+      if (!moved.ok) return
+      onOpen(moved.value)
+      context().onMoved?.(page, moved.value)
     },
   })
 
