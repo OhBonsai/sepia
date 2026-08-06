@@ -41,58 +41,68 @@ function argString(arg: unknown, key: string): string | null {
   return null
 }
 
+/**
+ * 注册四条文件命令。**刻意与 hook 分开**：注册本身不需要 React，
+ * 分开之后单测可以直接注册再 `execute`，不必为了测四条命令去起一个渲染器
+ * （002 §1 第 5 层：绕不过去的那种测试才有价值，而"起渲染器"这一步只会让人不写测试）。
+ */
+export function registerFileCommands(context: () => FileCommandContext): void {
+  registerCommand({
+    id: 'files.new',
+    title: 'cmd.file.new',
+    run: async (arg) => {
+      const { page, onOpen } = context()
+      // 没有当前 page 时不猜位置：那会把文件建到用户没预期的地方。
+      // 「无 book 时新建到哪」是主页/onboarding 的事（b 期）。
+      if (page === null) return
+      const name = argString(arg, 'name') ?? `${t('app.untitled')}.md`
+      const created = await api.createFile(resolveTarget(page, name))
+      if (created.ok) onOpen(created.value)
+    },
+  })
+
+  registerCommand({
+    id: 'files.rename',
+    title: 'cmd.file.rename',
+    run: async (arg) => {
+      const { page, onOpen } = context()
+      const to = argString(arg, 'to')
+      if (page === null || to === null) return
+      const renamed = await api.renameFile(page, resolveTarget(page, to))
+      if (renamed.ok) onOpen(renamed.value)
+    },
+  })
+
+  registerCommand({
+    id: 'files.move',
+    title: 'cmd.file.move',
+    run: async (arg) => {
+      const { page, onOpen } = context()
+      const directory = argString(arg, 'directory')
+      if (page === null || directory === null) return
+      const moved = await api.moveFile(page, directory)
+      if (moved.ok) onOpen(moved.value)
+    },
+  })
+
+  registerCommand({
+    id: 'files.trash',
+    title: 'cmd.file.trash',
+    run: async (arg) => {
+      const { page, onGone } = context()
+      const target = argString(arg, 'path') ?? page
+      if (target === null) return
+      // 删除**没有自绘确认**（架构 §4.9）——回收站本身就是撤销通道，
+      // 再加一层确认是把系统已经给的能力当不存在。
+      const trashed = await api.trashFile(target)
+      if (trashed.ok && target === page) onGone()
+    },
+  })
+}
+
+/** hook 形态：shell 挂载时注册一次。真正的注册体在上面，与 React 无关。 */
 export function useFileCommands(context: () => FileCommandContext): void {
   useEffect(() => {
-    registerCommand({
-      id: 'files.new',
-      title: 'cmd.file.new',
-      run: async (arg) => {
-        const { page, onOpen } = context()
-        // 没有当前 page 时不猜位置：那会把文件建到用户没预期的地方。
-        // 「无 book 时新建到哪」是主页/onboarding 的事（b 期）。
-        if (page === null) return
-        const name = argString(arg, 'name') ?? `${t('app.untitled')}.md`
-        const created = await api.createFile(resolveTarget(page, name))
-        if (created.ok) onOpen(created.value)
-      },
-    })
-
-    registerCommand({
-      id: 'files.rename',
-      title: 'cmd.file.rename',
-      run: async (arg) => {
-        const { page, onOpen } = context()
-        const to = argString(arg, 'to')
-        if (page === null || to === null) return
-        const renamed = await api.renameFile(page, resolveTarget(page, to))
-        if (renamed.ok) onOpen(renamed.value)
-      },
-    })
-
-    registerCommand({
-      id: 'files.move',
-      title: 'cmd.file.move',
-      run: async (arg) => {
-        const { page, onOpen } = context()
-        const directory = argString(arg, 'directory')
-        if (page === null || directory === null) return
-        const moved = await api.moveFile(page, directory)
-        if (moved.ok) onOpen(moved.value)
-      },
-    })
-
-    registerCommand({
-      id: 'files.trash',
-      title: 'cmd.file.trash',
-      run: async (arg) => {
-        const { page, onGone } = context()
-        const target = argString(arg, 'path') ?? page
-        if (target === null) return
-        // 删除**没有自绘确认**（架构 §4.9）——回收站本身就是撤销通道，
-        // 再加一层确认是把系统已经给的能力当不存在。
-        const trashed = await api.trashFile(target)
-        if (trashed.ok && target === page) onGone()
-      },
-    })
+    registerFileCommands(context)
   }, [context])
 }

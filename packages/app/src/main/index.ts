@@ -96,6 +96,15 @@ function armSmoke(window: BrowserWindow): BrowserWindow {
   return window
 }
 
+// 单实例锁按 Electron 的 `userData` 定，而 **macOS 上 `app.getPath` 无视 `$HOME`**
+// （main 里那条 `os.homedir()` 的注释说的是同一件事）。于是 smoke 的 HOME 隔离对它无效：
+// 两个并行的 smoke 会互相抢同一把锁，后启动的那个直接 `app.quit()`——**一扇窗都不开**，
+// 表现为 `firstWindow` 超时，看起来像"应用起不来"，实际是 T-29 在正确工作。
+// Stage 6a 实测撞出来的：L2/L3 两条并行线各自跑 smoke 时必然踩（170 §1.9）。
+// 只在显式给了这个变量时改（真实用户永远走默认路径）。
+const testUserData = process.env['SEPIA_TEST_USER_DATA']
+if (testUserData !== undefined && testUserData !== '') app.setPath('userData', testUserData)
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {

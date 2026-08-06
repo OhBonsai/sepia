@@ -60,7 +60,15 @@ async function boot(
   )
   const app = await electron.launch({
     args: LAUNCH_ARGS,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      // 单实例锁按 Electron 的 userData 定，而它**不跟 $HOME 走**（macOS 上 app.getPath
+      // 无视 $HOME）。不隔离它，另一条并行线的 smoke 一开着，这里每次 launch 都抢不到锁、
+      // 直接 quit——一扇窗都不开，报出来是「Target page has been closed」。170 §1.9 实测。
+      SEPIA_TEST_USER_DATA: join(home, 'electron-user-data'),
+    },
   })
   const win = await app.firstWindow()
   await win.waitForSelector('.cm-content')
