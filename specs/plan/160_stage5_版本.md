@@ -34,8 +34,39 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L2**，与 **
 2. **shell 冻结令继续**：L2/L3 不碰 `App.tsx` / `EditorHost` / session schema / renderer
    editor 区。renderer 侧只允许两处点状 UI：L2 的**纸角警示点**（写盘失败，架构 §4.2）、
    L3 的**冲突提示横条**（复用 Stage 3 提示线模式）。
-3. **唯一共享接缝（预先声明）**：L2 的写盘管线维护「最近自写记录」（path + mtime 环形表，
-   main 侧内部接口），L3 的回声抑制消费它。接口形状 L2 定，L3 只读，两份 plan 同文记录。
+3. **唯一共享接缝——已定型（2026-08-06，L2 定，两份 plan 同文）**：
+   `@sepia/core` 的 `createSelfWriteLog()`（`core/src/fs/self-write.ts`，**纯逻辑、无 fs、无 Electron**）。
+   L2 的写盘管线在**写成功之后** `record`，L3 的回声抑制在 watcher 事件到达时 `claim`。
+
+   ```ts
+   interface SelfWriteEntry {
+     path: string      // 绝对路径，**必须 realpath**（见下）
+     mtimeMs: number   // 写完后 stat 到的
+     size: number      // 写完后的字节数
+   }
+   interface SelfWriteLog {
+     record(entry: SelfWriteEntry): void      // 写盘成功后登记（失败的写不登记：盘上没变化，就不会有回声）
+     claim(entry: SelfWriteEntry): boolean    // 是自写吗？**命中即消费**
+     readonly size: number                    // 在册条数（诊断/测试用）
+   }
+   createSelfWriteLog(options?: { capacity?: number; ttlMs?: number; now?: () => number }): SelfWriteLog
+   // 默认 capacity 64、ttlMs 5000、now = Date.now
+   ```
+
+   四条语义是**接缝的实质**，两侧都按它写才对得齐：
+
+   - **`claim` 是消费型，不是纯查询**。一条自写只挡一次回声。不消费的话，一个恰好同指纹的
+     真外部改动会被永久吞掉；消费掉，最坏只误吞一次。取舍同锚点的「宁可孤儿不误挂」。
+   - **`path` 两侧都要 realpath**。macOS 的 `/var` 是 `/private/var` 的符号链接，同一个文件
+     两侧拿到的字符串能完全不同——Stage 4 的 a4 装置就在这上面栽过一次。
+   - **指纹是 path + mtime + size，不是内容哈希**。哈希要为每次保存把内容再读一遍算一遍；
+     漏网场景（窗口内、同路径、mtime 与字节数同时撞上的**真**外部改动）少到可忽略，
+     且消费型语义把代价封顶在"误吞一次"。
+   - **过期即放行**（默认 5s）。回声是毫秒级到的；更晚的同指纹变更更可能是真改动。
+
+   **状态**：纯模块 + 7 条单测已随 L2 落地（`packages/core/test/self-write.test.ts`，
+   两条破坏——不消费、指纹去掉 size——均实证必红）。**L3 现在就能 import 真类型**，
+   不必等 L2 的写盘管线合并；要跑通链路再用本地桩接 `record` 那一侧。
 4. 共享注册表仅追加（003 §5 清单）；`bun.lock` 冲突以重新 `bun install` 为准。
 
 ### 一、Stage 4 的 DoD 达成情况
@@ -47,8 +78,8 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L2**，与 **
 |---|---|
 | 150 债 1/2/3（性能实测/基线重立/.dmg） | 不动。**建议 a 期合并后插一次 release 专项一并清**（三者互相咬着） |
 | 150 债 4（typecheck 增量化，触发式） | 未触发不动 |
-| **150 债 5（`agent=title` 冗余调用）** | **本期顺手做**：查引擎自动取标题的关闭开关，经 `OPENCODE_CONFIG_CONTENT` 注入关掉；关不掉则记 §1.9 回流上游 |
-| **150 债 8（002 补元规则）** | **本期开门做**：002 §6.2 补「破坏方式必须瞄准"真正会出事的那个场景"，而非功能的一般路径」（150 #17 的原文表述），并附 dead_checks 四例索引 |
+| **150 债 5（`agent=title` 冗余调用）** | **✓ 已还**（2026-08-06）：引擎有开关——`agent: { title: { disable: true } }` 命中即 `delete agents['title']`，而取标题那段开头就是 `agents.get("title")` 取不到就 `return`（vendor `session/prompt.ts`），**整段跳过而非跑完丢掉**。已注入 `OPENCODE_CONFIG_CONTENT`。真引擎复验：整轮 stream 行**从两条降到一条**（只剩 `agent=rewrite`），a4 装置的判据同步加严为「stream 行总共一条」 |
+| **150 债 8（002 补元规则）** | **✓ 已还**（2026-08-06）：002 §6 规则 2 下补推论——「破坏方式必须瞄准真正会出事的那个场景，而非功能的一般路径」，附**四例索引**（150 的 #4/#7/#9/#17，各写明"破坏后仍绿是因为什么"与"改成什么才红"）与一句形态判据：**桩替被测系统假设掉的那部分，正是检查最容易空转的地方** |
 | 130 债①（列表/表格视觉） | 不动，攒视觉专项 |
 
 ### 三、设计点（计划自带答案，人审一并裁）
@@ -105,6 +136,8 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L2**，与 **
 | 6 | 单测 · 降级 | 非 git 目录 → 写盘照常、零 git 调用、零警示 |
 | 7 | smoke · 写字→800ms→盘上有→静默 commit 出现（trailer 齐） | 吞掉防抖/吞掉 commit → 必红 |
 | 8 | smoke · 写盘失败纸角警示 | 复用 Stage 1 chmod 555 测法脚本化 |
+| 9 | **smoke · IME 组合中不写盘**（风险 1）：CDP 真组合管线，组合期间盘上不出现拼音 | 去掉挂起 → 盘上出现 `nihao` 必红 |
+| 10 | **smoke · 组合中途失焦仍能自动保存**（风险 1 的保险）：组合中 `blur`，此后打字仍按 800ms 落盘 | 只认 `compositionend` 不认 `blur` → **自动保存从此静默停摆**，必红。破坏瞄的是"悄悄不保存了"这个事故，不是"能不能保存"的一般路径（002 §6.2） |
 
 ## 1.6 验证（两栏）
 **CC 代验**：上表全部 + RV 记录 + `git log` 样本留档（个位数、message 干净）。
@@ -114,10 +147,37 @@ L1（Stage 4）已合并关闭，master 即基线。本 a 期为 **L2**，与 **
 ## 1.8 风险
 | # | 风险 | 探法 |
 |---|---|---|
-| 1 | 800ms 防抖与 CM6 输入的交互（IME 组合中不许写盘） | 先探：composition 期间挂起防抖 |
+| 1 | 800ms 防抖与 CM6 输入的交互（IME 组合中不许写盘） | **已探完（2026-08-06），结论见下** |
 | 2 | git CLI 在用户环境的差异（版本/配置/hook） | 边做边探；`-c` 显式覆盖关键配置，用户 hook 不执行（`--no-verify`?）——查证后定，记回 |
 | 3 | 锚点标定集的代表性 | 边做边探；b 期真实使用后回标 |
 | 4 | 定时 commit 与静默 commit 的竞态 | 队列天然串行 + 单测 #2 |
+
+### 风险 1 的探针结论（2026-08-06，CDP 真组合管线）
+
+装置沿用 130 smoke ③ 那套 CDP `Input.imeSetComposition`——**合成 CompositionEvent 设不动
+`view.composing`**（130 §1.8 风险 4 实测），只有 CDP 走的是与真 IME 同一条管线。三问三答：
+
+**一、组合中途文档里装的是什么？** 拼音本身。实测中途文档是 `输入区nihao 尾`——
+**这一刻写盘，落到磁盘上的就是 `nihao`**。它随后会被 `你好` 替换掉，所以不是数据损坏；
+但盘上确实短暂存在过一个用户从没打算保存的版本，且组合每敲一下都触发一次写。
+**这就是"IME 组合中不许写盘"的具体理由**，不是洁癖。
+
+**二、靠什么信号知道正在组合？** `compositionstart` / `compositionend`，**它们冒泡到
+`document`**——实测在 `document` 上就能收全。这一条决定了实现形态：
+**防抖的挂起/恢复不需要碰 `EditorHost`，也不需要 `view.composing`**，
+在 renderer 顶层挂两个监听即可。**冻结令因此不被触碰**（§1.1〇-2）。
+
+**三、`compositionend` 时文档是终态了吗？** 是。实测事件顺序为
+`compositionstart → (update, input)×n → input(你好) → compositionend`——
+**带最终文本的 `input` 排在 `compositionend` 之前**。所以恢复防抖时直接用当前文档即可，
+不必为"等文本落定"再补延时。
+
+**据此定的做法**：`compositionstart` 取消在飞的防抖并挂起；`compositionend` 解挂并重启计时。
+**外加一条保险**：`blur` 也解挂——组合中途切走窗口时 `compositionend` 未必来，
+只认 `compositionend` 的话防抖会永久挂起，那是"自动保存悄悄停了"，比写早了更糟。
+这条保险要有自己的检查（挂进 §1.4/1.5，破坏方式瞄的正是"组合中途失焦 → 从此不再自动保存"）。
+
+---
 
 ## 1.9 回流
 实施中累积。已知候选：002 §6.2 元规则（债 8，开门做）。
