@@ -254,3 +254,23 @@ test('#5 更新链接：只查不改 → 用户点了才改，且只改指向旧
   expect(after).toContain('[乙](renamed.md)')
   expect(after, '误改了无关链接——比漏更新严重得多').toContain('[别的](bb.md)')
 })
+
+test('#7c 没有 .md 的文件夹作 book → **说人话**，不是两个哑目录行', async () => {
+  // 真人轮撞出来的形状（§2.9 条目 4）：HTML 原型导出目录当 book，
+  // 底下全是图片与 html，一个 .md 都没有
+  const home = await mkdtemp(join(tmpdir(), 'sepia-empty-'))
+  const book = join(home, 'book')
+  await mkdir(join(book, 'uploads'), { recursive: true })
+  await mkdir(join(book, 'scraps'), { recursive: true })
+  await writeFile(join(book, 'design.html'), '<html></html>', 'utf8')
+  await writeFile(join(book, 'uploads', 'a.png'), 'PNG', 'utf8')
+  await mkdir(join(home, '.sepia'), { recursive: true })
+  const fixture = { home, book, pages: [] }
+  const win = await launch(fixture, { version: 2, book, tabs: [], active: 0 })
+
+  // 一：**一个哑目录行都没有**——没有 md 的目录不进树
+  await expect(win.locator('[data-sepia-tree-kind="dir"]'), '空目录还在树里').toHaveCount(0)
+  await expect(win.locator('[data-sepia-tree-kind="file"]')).toHaveCount(0)
+  // 二：**说了人话**，而不是留一片空白让人以为坏了
+  await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible()
+})

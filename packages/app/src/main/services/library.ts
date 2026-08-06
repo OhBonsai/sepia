@@ -6,6 +6,7 @@ import {
   findLinks,
   imageTarget,
   limitTree,
+  pruneEmptyDirs,
   pushRecent,
   titleOf,
   type IoResult,
@@ -61,7 +62,8 @@ export async function scanBook(root: string, limit: number): Promise<TreeScan> {
   }
 
   await walk(root, 0)
-  return limitTree(entries, limit)
+  // **先摘空目录再裁上限**：顺序反了的话，被裁掉子文件的目录会变成"空目录"被误摘
+  return limitTree(pruneEmptyDirs(entries), limit)
 }
 
 /**

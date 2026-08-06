@@ -6,6 +6,7 @@ import {
   imageTarget,
   limitTree,
   matchRefs,
+  pruneEmptyDirs,
   pushRecent,
   titleOf,
   type RefCandidate,
@@ -146,5 +147,28 @@ describe('链接更新（§2.4 #5：只改指向旧路径的）', () => {
 
   it('没有命中就一个字节都不改', () => {
     expect(applyLinkUpdates(text, findLinks(text, 'p.md', '不存在.md'), 'x.md')).toBe(text)
+  })
+})
+
+describe('空目录摘除（真人轮撞出来的，§2.9 条目 4）', () => {
+  it('**一个 md 都没有的目录不进树**——它们是噪音，还会让人以为应用坏了', () => {
+    // 真人轮那个 book 的形状：两个目录，底下全是图片，一个 .md 都没有
+    const entries = [entry('scraps', 0, 'dir'), entry('uploads', 0, 'dir')]
+    expect(pruneEmptyDirs(entries)).toEqual([])
+  })
+
+  it('有 md 的目录留下，连同它的每一层祖先', () => {
+    const entries = [
+      entry('a', 0, 'dir'),
+      entry('a/b', 1, 'dir'),
+      entry('a/b/note.md', 2),
+      entry('empty', 0, 'dir'),
+    ]
+    expect(pruneEmptyDirs(entries).map((row) => row.path)).toEqual(['a', 'a/b', 'a/b/note.md'])
+  })
+
+  it('顶层的 md 一律留下', () => {
+    const entries = [entry('top.md', 0), entry('junk', 0, 'dir')]
+    expect(pruneEmptyDirs(entries).map((row) => row.path)).toEqual(['top.md'])
   })
 })

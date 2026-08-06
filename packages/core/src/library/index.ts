@@ -24,6 +24,25 @@ export interface TreeScan {
 }
 
 /**
+ * 摘掉**一个 markdown 都没有的目录**。
+ *
+ * 真人轮撞出来的（170 §2.9 条目 4）：拿一个 HTML 原型导出目录当 book，树里只剩
+ * `scraps` 与 `uploads` 两个哑行——它们底下 78 个文件全是图片，一个 `.md` 都没有。
+ * 树是**markdown 笔记本的树**，列一个点不开也没内容的目录纯属噪音，
+ * 而且会让人以为应用坏了。
+ */
+export function pruneEmptyDirs(entries: TreeEntry[]): TreeEntry[] {
+  const withFiles = new Set<string>()
+  for (const entry of entries) {
+    if (entry.kind !== 'file') continue
+    // 这个文件的每一层祖先都算"有内容"
+    const parts = entry.path.split('/')
+    for (let i = 1; i < parts.length; i++) withFiles.add(parts.slice(0, i).join('/'))
+  }
+  return entries.filter((entry) => entry.kind === 'file' || withFiles.has(entry.path))
+}
+
+/**
  * 把扫回来的平表按上限裁一次。
  *
  * **上限是"有界"这条约定的唯一落点**（架构 §4.9 待补的那句）：没有它，

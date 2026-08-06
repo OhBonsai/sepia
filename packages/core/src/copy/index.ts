@@ -77,6 +77,7 @@ export const copy = {
   'conflict.preserved': '另一版已备份到 .sepia 的 conflicts 里',
 
   // Stage 6b：库 UI
+  'library.tree.empty': '这个文件夹里没有 .md —— 换一个文件夹作 book，或用 ⌘O 打开单个文件',
   'library.tree.degraded': '这个 book 太大了，只列出了顶层——打开子目录里的文件可用 ⌘O',
   'cmd.library.sidebar': '收起 / 展开侧边栏',
   'home.choose.book': '选择文件夹作为 book',

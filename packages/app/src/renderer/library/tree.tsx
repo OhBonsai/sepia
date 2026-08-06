@@ -74,6 +74,13 @@ export function FileTree(props: FileTreeProps): React.JSX.Element {
           {t('library.tree.degraded')}
         </div>
       )}
+      {scan.entries.length === 0 && (
+        // **空态要说人话**：真人轮里一个没有 .md 的 book 只显示两个哑目录行，
+        // 看起来跟坏了一样（170 §2.9 条目 4）
+        <div className="sepia-tree-notice" data-sepia-tree-notice="empty">
+          {t('library.tree.empty')}
+        </div>
+      )}
       {scan.entries.map(row)}
     </div>
   )
