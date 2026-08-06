@@ -100,20 +100,27 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv, workingDirectory) => {
-    queuePaths(markdownPathsFrom(argv, workingDirectory))
-    armSmoke(createWindow())
+    const paths = markdownPathsFrom(argv, workingDirectory)
+    queuePaths(paths)
+    // 一个路径一扇窗（T-29 的 VS Code 模型）；没带路径就开一扇空窗。
+    // 队列在 `session/get` 里逐个被取，所以窗口数必须与路径数对齐——
+    // 只开一扇的话第二个路径会静默留在队列里，下次启动才莫名弹出来。
+    for (let index = 0; index < Math.max(1, paths.length); index += 1) armSmoke(createWindow())
   })
 
-  // macOS 双击 .md / 拖到图标。
-  // **注意：当前没有注册为 .md 处理器**——`electron-builder.yml` 里没有
-  // `fileAssociations`，所以系统不会给我们发这个事件，只有 `open -a Sepia x.md`
-  // 这种显式指定能触发。`fileAssociations` 与游离 page（T-30）一并归 **Stage 6**，
-  // 见 120 §1.1 问题二。handler 留着是因为它本身是对的，删了下次还得重写——
-  // 但「代码在」不等于「功能在」。
+  // macOS 双击 .md / 拖到图标 / `open -a Sepia x.md`（120 §1.1 问题二，**此刻兑现**）。
+  //
+  // `fileAssociations` 已补进 electron-builder.yml，所以系统从此真会发这个事件；
+  // 三个入口（argv / open-file / 二次启动转交）在 `session/get` 汇成同一条通道。
+  // **双击这条的人工验证依赖打包**（未打包的应用没在 LaunchServices 里注册），
+  // 挂在 .dmg 债上一并验；`open -a` 与 argv 两条本期就能验（170 §1.1 三）。
+  //
+  // 事件可能早于 `whenReady`（冷启动双击就是这样）：那时只入队，窗口由 whenReady 建。
+  // 已经在跑就为它开一扇新窗——不复用当前窗，因为当前窗里可能有没存的字。
   app.on('open-file', (event, path) => {
     event.preventDefault()
     queuePaths([path])
-    if (app.isReady() && registry.count() === 0) armSmoke(createWindow())
+    if (app.isReady()) armSmoke(createWindow())
   })
 
   app.on('window-all-closed', () => {

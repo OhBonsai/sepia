@@ -27,11 +27,14 @@ export function queuePaths(paths: readonly string[]): void {
 }
 
 /**
- * 取走并清空待打开队列。**唯一的消费者是 `session/get`**（Stage 6a）——
+ * 取走队列里的下一个路径。**唯一的消费者是 `session/get`**（Stage 6a）——
  * renderer 启动时问一次 session，队列里的 page 在那里汇入。
+ *
+ * 一次只取一个：三入口都是「一个路径一扇窗」（T-29 的 VS Code 模型），
+ * 一把取空会让第二个路径静默丢失。
  */
-export function takePendingPaths(): string[] {
-  return pending.splice(0, pending.length)
+export function takeNextPendingPath(): string | null {
+  return pending.shift() ?? null
 }
 
 /**

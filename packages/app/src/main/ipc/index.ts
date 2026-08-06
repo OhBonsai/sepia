@@ -14,7 +14,7 @@ import {
   type SessionState,
 } from '@sepia/core'
 
-import { takePendingPaths } from '../argv.ts'
+import { takeNextPendingPath } from '../argv.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
@@ -131,8 +131,12 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     // 三入口（argv / `open-file` / 二次启动转交）的 page 在这里汇入（120 §1.1 问题二）。
     // 不为它新开桥项：renderer 启动本来就要问一次 session，"这次该打开哪个 page"
     // 正是 session 的语义。**队列在此被消费**——armSmoke 那边只许 peek。
-    const [first] = takePendingPaths()
-    if (first !== undefined) return { ...session, page: first, cursor: 0, scrollTop: 0 }
+    //
+    // 光标归零：命令行/双击打开的是"这个文件"，不是"上次那个位置"。
+    // 而这个 page 可能压根不属于任何 book（游离，T-30）——那条降级由 main 侧判定，
+    // renderer 什么都不必知道：纸完全可写，与不变量 1 同构。
+    const first = takeNextPendingPath()
+    if (first !== null) return { ...session, page: first, cursor: 0, scrollTop: 0 }
     return session
   })
 
