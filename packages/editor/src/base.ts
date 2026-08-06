@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
-import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
+import { EditorView, drawSelection, keymap } from '@codemirror/view'
 
 import type { EditorView as EditorViewType } from '@codemirror/view'
 
@@ -28,6 +28,9 @@ import { applyMarkup, type ApplyMarkupRequest, type ApplyMarkupResult } from './
 // CM6 的主题写 `var(--sepia-*)`，与 @sepia/ui 的变量表**共享名字但不共享代码**——
 // `editor ↮ ui` 是刻意不连线（T-20）。改名字要两边一起改，这是有意的摩擦。
 
+/** 版心宽度（170 §2.1 〇）。一行 30–40 个汉字，是长文里最不累的那一档。 */
+export const MEASURE_PX = 760
+
 const paperTheme = EditorView.theme({
   '&': {
     height: '100%',
@@ -36,16 +39,17 @@ const paperTheme = EditorView.theme({
   },
   '.cm-content': {
     caretColor: 'var(--sepia-caret)',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '15px',
-    lineHeight: '1.7',
+    // **正文栈，不是等宽**（170 §2.1 〇）。等宽字体让每一段都像代码清单；
+    // 而这是一张写字的纸。代码块与行内代码单独保留等宽（见 styles.css 的 syn-code 族）。
+    fontFamily: '-apple-system, "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif',
+    fontSize: '16px',
+    lineHeight: '1.85',
     padding: '24px 0 40vh',
   },
-  '.cm-gutters': {
-    backgroundColor: 'var(--sepia-paper)',
-    color: 'var(--sepia-ink-muted)',
-    border: 'none',
-  },
+  // **版心**：正文栏居中限宽。浮层与 diff 住在文档流里（块级 widget），
+  // 因此自动继承这个宽度——不必各自再约定一次。
+  '.cm-scroller': { justifyContent: 'center' },
+  '.cm-content, .cm-gutters': { maxWidth: `${MEASURE_PX}px`, width: '100%' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--sepia-caret)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--sepia-selection)',
@@ -84,7 +88,9 @@ export function baseExtensions(options: BaseExtensionOptions = {}): Extension[] 
   return [
     // 这一行是不变量 2 的守卫，不是可选项。删了它 CRLF 文件会被静默改成 LF。
     EditorState.lineSeparator.of(options.lineEnding ?? '\n'),
-    lineNumbers(),
+    // **没有 lineNumbers()**（170 §2.1 〇，人裁"气质按原型的纸来"）：
+    // 行号是代码编辑器的家具，它一在左边立着，这就不是一张纸了。
+    // 去掉它顺带把 gutter 整条移出布局——版心因此真的居中，而不是"减去 gutter 之后居中"。
     history(),
     drawSelection(),
     EditorView.lineWrapping,
