@@ -433,7 +433,10 @@ body {
   border-bottom: 1px solid var(--sepia-rule);
 }
 
+/* box-sizing：内边距算进版心里。不加的话 max-width:760 + padding:24 = 808，
+   主页就比正文宽出一圈——版心这条约定要在两处都成立才叫约定。 */
 .sepia-home {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 24px;
