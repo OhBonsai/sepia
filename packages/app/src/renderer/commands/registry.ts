@@ -9,7 +9,15 @@ export interface Command {
   title: CopyKey
   /** CM6 风格的键位描述，如 `Mod-s`。没有键位的命令也合法（只从按钮触发）。 */
   key?: string
-  run: () => void | Promise<void>
+  /**
+   * 命令体。**参数是可选的**（Stage 6a）：文件域的重命名/移动需要一个目标，
+   * 而目标只有调用方知道——b 期的文件树 UI 会带着它走 `execute(id, arg)`，
+   * a 期没有 UI，同一条命令由测试直接带参数调用。
+   *
+   * 刻意不做成必填、也不给命令加 schema：命令层是「一种契约，不是两种」（纪律 6），
+   * 参数校验的真相在 main 的 services（那里才守着用户的文件）。
+   */
+  run: (arg?: unknown) => void | Promise<void>
 }
 
 const registry = new Map<string, Command>()
@@ -18,10 +26,10 @@ export function registerCommand(command: Command): void {
   registry.set(command.id, command)
 }
 
-export function execute(id: string): void | Promise<void> {
+export function execute(id: string, arg?: unknown): void | Promise<void> {
   const command = registry.get(id)
   if (!command) return
-  return command.run()
+  return command.run(arg)
 }
 
 export function all(): Command[] {

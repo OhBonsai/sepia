@@ -73,6 +73,21 @@ body {
   border-bottom: 1px solid var(--sepia-rule);
 }
 
+/*
+ * Stage 6a：外部变更的冲突横条。**复用 Stage 3 的提示线模式**（170 §1.1〇-2）——
+ * 同样是一条线的存在感，不弹窗、不占版面、不抢焦点。差别只有一处：
+ * 它说的是用户的字节，所以颜色比缺席提示更实（--sepia-ink 而非 muted），
+ * 且不自己溜走（sticky 由 core 的判定给，见 files/external.ts）。
+ * 三选（保留我的 / 用外部的 / 看 diff）归 b 期，横条此刻只报事实。
+ */
+.sepia-conflict-line {
+  padding: 4px 16px;
+  font-size: 12px;
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
 /* ⌘K 的状态文案：短暂出现自行消失（Stage 3 只到状态，浮层归 Stage 4）。 */
 .sepia-agent-hint {
   position: fixed;

@@ -6,13 +6,14 @@ import { homedir } from 'node:os'
 
 import { app, BrowserWindow } from 'electron'
 
-import { markdownPathsFrom, queuePaths, takePendingPaths } from './argv.ts'
-import { broadcastAgent, broadcastTheme, registerIpc, stopSavePipeline } from './ipc/index.ts'
+import { markdownPathsFrom, peekPendingPaths, queuePaths } from './argv.ts'
+import { broadcastAgent, broadcastFiles, broadcastTheme, registerIpc, stopSavePipeline } from './ipc/index.ts'
 import { startEngine, stopEngine } from './services/agent-supervisor.ts'
 import { loadConfig, saveConfig, type LoadedConfig } from './services/config.ts'
 import { loadCredentials } from './services/credentials.ts'
 import { sepiaPaths, type SepiaPaths } from './services/paths.ts'
 import * as theme from './services/theme.ts'
+import { configureWatcher, stopWatcher } from './services/watcher.ts'
 import * as registry from './windows/registry.ts'
 import { createWindow, setMarkupConfig } from './windows/create.ts'
 
@@ -75,7 +76,7 @@ function armSmoke(window: BrowserWindow): BrowserWindow {
   if (!SMOKE_WINDOWS) return window
 
   window.webContents.once('did-finish-load', () => {
-    const pending = takePendingPaths()
+    const pending = peekPendingPaths()
     process.stdout.write(
       `sepia: window ready, registry=${registry.count()}, pending=${JSON.stringify(pending)}\n`,
     )
@@ -140,6 +141,10 @@ if (!app.requestSingleInstanceLock()) {
       registerIpc(paths, loaded.config)
       broadcastTheme()
       broadcastAgent()
+      broadcastFiles()
+      // 网络盘逃生舱（架构 §4.9）。watcher 本体的挂载在 renderer 打开 page 之后
+      // （见 ipc 的 `file/read`）——它属于异步路径，纪律 12 不许它挡光标。
+      configureWatcher({ usePolling: loaded.config.watcher.usePolling })
 
       queuePaths(markdownPathsFrom(process.argv, process.cwd()))
       armEngine(armSmoke(createWindow()), paths, loaded)
@@ -151,6 +156,7 @@ if (!app.requestSingleInstanceLock()) {
         // 而那时窗口已经没了，git 子进程却还在跑（架构 §4.2：commit 与纸解耦，
         // 解耦的另一半是"纸没了它也该停"）。
         stopSavePipeline()
+        void stopWatcher()
       })
     },
     (error: unknown) => {

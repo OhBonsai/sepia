@@ -1,4 +1,4 @@
-import type { IoResult, ResolvedTheme, SessionState } from '@sepia/core'
+import type { FileNotice, IoResult, ResolvedTheme, SessionState } from '@sepia/core'
 
 // 纪律 1：**组件不得 import window.api**。整个 renderer 里只有这个文件碰它。
 // lint 规则盯着 `renderer/` 下除本文件与 agent-bridge.ts 之外的所有位置。
@@ -10,6 +10,13 @@ interface Bridge {
     write(path: string, content: string): Promise<IoResult<void>>
   }
   dialog: { openMarkdown(): Promise<string | null> }
+  files: {
+    create(path: string, content: string): Promise<IoResult<string>>
+    rename(from: string, to: string): Promise<IoResult<string>>
+    move(from: string, directory: string): Promise<IoResult<string>>
+    trash(path: string): Promise<IoResult<void>>
+    onExternalChange(cb: (notice: FileNotice) => void): () => void
+  }
   session: { get(): Promise<SessionState>; set(state: SessionState): Promise<void> }
   theme: { get(): Promise<ResolvedTheme>; onChange(cb: (theme: ResolvedTheme) => void): () => void }
   perf: { mark(name: string): void }
@@ -22,6 +29,11 @@ export const api = {
   readFile: (path: string) => bridge.file.read(path),
   writeFile: (path: string, content: string) => bridge.file.write(path, content),
   openMarkdown: () => bridge.dialog.openMarkdown(),
+  createFile: (path: string, content = '') => bridge.files.create(path, content),
+  renameFile: (from: string, to: string) => bridge.files.rename(from, to),
+  moveFile: (from: string, directory: string) => bridge.files.move(from, directory),
+  trashFile: (path: string) => bridge.files.trash(path),
+  onExternalChange: (cb: (notice: FileNotice) => void) => bridge.files.onExternalChange(cb),
   getSession: () => bridge.session.get(),
   setSession: (state: SessionState) => bridge.session.set(state),
   getTheme: () => bridge.theme.get(),

@@ -35,6 +35,7 @@ export interface AppConfig {
   contextBudgetTokens: number
   /** session 预热池大小（T-32）。引擎就绪时预建这么多个空 session。 */
   sessionPrewarm: number
+<<<<<<< HEAD
   /** 停止输入多久自动写盘（架构 §4.2 写盘时间线）。⌘S 仍是即时的，不受它影响。 */
   autosaveDebounceMs: number
   /**
@@ -46,6 +47,16 @@ export interface AppConfig {
   commitIntervalMs: number
   /** 锚点模糊匹配的相似度下限。调低即更容易误挂（架构 §4.2「宁可孤儿不误挂」）。 */
   anchorFuzzyThreshold: number
+=======
+  /** 文件监听（Stage 6a）。只放真读的字段——见架构 §4.5 那句「不是建设清单」。 */
+  watcher: {
+    /**
+     * 网络盘的逃生舱（架构 §4.9 / T-26）：`fs.watch` 在网络盘上事件常常不来，
+     * 打开它改用轮询。默认关——轮询在本地盘上是纯粹的耗电。
+     */
+    usePolling: boolean
+  }
+>>>>>>> a544978 (Stage 6a：watcher + 对账 + 回声抑制 + 文件管理服务层 + files 桥五项)
 }
 
 /**

@@ -17,10 +17,14 @@ export const DEFAULT_CONFIG: AppConfig = {
   contextScope: 'page',
   contextBudgetTokens: 6_000,
   sessionPrewarm: 1,
+<<<<<<< HEAD
   autosaveDebounceMs: 800,
   commitIdleMs: 8_000,
   commitIntervalMs: 300_000,
   anchorFuzzyThreshold: 0.75,
+=======
+  watcher: { usePolling: false },
+>>>>>>> a544978 (Stage 6a：watcher + 对账 + 回声抑制 + 文件管理服务层 + files 桥五项)
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
@@ -54,6 +58,7 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
   const provider = raw['provider']
   const model = raw['model']
   const contextScope = raw['contextScope']
+  const watcher = raw['watcher']
   const KNOWN = new Set([
     'version',
     'theme',
@@ -62,10 +67,14 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'contextScope',
     'contextBudgetTokens',
     'sessionPrewarm',
+<<<<<<< HEAD
     'autosaveDebounceMs',
     'commitIdleMs',
     'commitIntervalMs',
     'anchorFuzzyThreshold',
+=======
+    'watcher',
+>>>>>>> a544978 (Stage 6a：watcher + 对账 + 回声抑制 + 文件管理服务层 + files 桥五项)
   ])
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw)) {
@@ -86,11 +95,15 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
           : DEFAULT_CONFIG.contextScope,
       contextBudgetTokens: positiveInt(raw['contextBudgetTokens'], DEFAULT_CONFIG.contextBudgetTokens),
       sessionPrewarm: positiveInt(raw['sessionPrewarm'], DEFAULT_CONFIG.sessionPrewarm),
+<<<<<<< HEAD
       autosaveDebounceMs: positiveInt(raw['autosaveDebounceMs'], DEFAULT_CONFIG.autosaveDebounceMs),
       commitIdleMs: positiveInt(raw['commitIdleMs'], DEFAULT_CONFIG.commitIdleMs),
       commitIntervalMs: positiveInt(raw['commitIntervalMs'], DEFAULT_CONFIG.commitIntervalMs),
       // 相似度是 0–1 的小数，positiveInt 收不了它——单独一条：范围外一律退回默认
       anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
+=======
+      watcher: { usePolling: isRecord(watcher) && watcher['usePolling'] === true },
+>>>>>>> a544978 (Stage 6a：watcher + 对账 + 回声抑制 + 文件管理服务层 + files 桥五项)
     },
     unknown: preserved,
   }
@@ -110,12 +123,16 @@ export function configToDisk(
     out['contextBudgetTokens'] = config.contextBudgetTokens
   }
   if (config.sessionPrewarm !== DEFAULT_CONFIG.sessionPrewarm) out['sessionPrewarm'] = config.sessionPrewarm
+<<<<<<< HEAD
   if (config.autosaveDebounceMs !== DEFAULT_CONFIG.autosaveDebounceMs) out['autosaveDebounceMs'] = config.autosaveDebounceMs
   if (config.commitIdleMs !== DEFAULT_CONFIG.commitIdleMs) out['commitIdleMs'] = config.commitIdleMs
   if (config.commitIntervalMs !== DEFAULT_CONFIG.commitIntervalMs) out['commitIntervalMs'] = config.commitIntervalMs
   if (config.anchorFuzzyThreshold !== DEFAULT_CONFIG.anchorFuzzyThreshold) {
     out['anchorFuzzyThreshold'] = config.anchorFuzzyThreshold
   }
+=======
+  if (config.watcher.usePolling !== DEFAULT_CONFIG.watcher.usePolling) out['watcher'] = config.watcher
+>>>>>>> a544978 (Stage 6a：watcher + 对账 + 回声抑制 + 文件管理服务层 + files 桥五项)
   return out
 }
 

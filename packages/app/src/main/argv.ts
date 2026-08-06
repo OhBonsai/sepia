@@ -26,7 +26,19 @@ export function queuePaths(paths: readonly string[]): void {
   pending.push(...paths)
 }
 
-/** 取走并清空待打开队列。Stage 1 的 page 打开流程从这里领活。 */
+/**
+ * 取走并清空待打开队列。**唯一的消费者是 `session/get`**（Stage 6a）——
+ * renderer 启动时问一次 session，队列里的 page 在那里汇入。
+ */
 export function takePendingPaths(): string[] {
   return pending.splice(0, pending.length)
+}
+
+/**
+ * 看一眼队列但不消费。smoke 的日志行用它。
+ * 曾经那行用的是 `take`：日志把队列吃掉，于是 argv 传进来的 page 永远打不开——
+ * 而且只在开了 smoke 开关时才这样，正常启动看不出来。
+ */
+export function peekPendingPaths(): readonly string[] {
+  return pending
 }

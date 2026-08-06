@@ -12,6 +12,7 @@ import {
 import { Loading, SearchPanel } from '@sepia/ui'
 
 import { EditorHost } from '../editor/host.tsx'
+import { useFiles } from '../files/index.ts'
 import { markupConfig } from '../markup/config.ts'
 import { nearbyBlocks } from '../markup/nearby.ts'
 
@@ -295,6 +296,22 @@ export function App(): React.JSX.Element {
     document.title = page ? `${dirty ? '• ' : ''}${page.path.split('/').pop()}` : t('app.name')
   }, [page, dirty])
 
+  // Stage 6a：纸与外部世界的接缝。冻结令下这是 renderer 唯一的新增接线——
+  // 判定在 core、动手在 files/、UI 只有下面那一条横条（170 §1.1〇-2）。
+  const conflict = useFiles({
+    path: page?.path ?? null,
+    dirty,
+    save,
+    reload: open,
+    position: () => ({ cursor: editor.current?.selection().from ?? 0, scrollTop: sessionDraft.current.scrollTop }),
+    onOpen: (next) => void open(next),
+    onGone: () => {
+      // 用户自己删掉了当前 page（不是外部删除——那条走 detach，内容留在纸上）
+      setPage(null)
+      setStatus('empty')
+    },
+  })
+
   if (status === 'loading') return <Loading label={t('app.loading')} />
 
   return (
@@ -305,6 +322,11 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {kHint !== null && <div className="sepia-agent-hint">{kHint}</div>}
+      {conflict !== null && (
+        <div className="sepia-conflict-line" data-sepia-conflict={conflict.kind}>
+          {conflict.text}
+        </div>
+      )}
       {error !== null && <div className="sepia-error">{error}</div>}
       {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
       {markup !== null &&

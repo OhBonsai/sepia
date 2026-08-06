@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import type { IoResult } from '@sepia/core'
+
+import { noteSelfWrite } from './self-writes.ts'
 
 // 纪律 8：`.sepia/` 下 json 一律 tmp + rename 原子写。
 // **这是全仓库唯一被允许直接调 fs 写接口的地方**——lint 规则拦住其余所有位置。
@@ -35,6 +37,14 @@ export async function atomicWrite(path: string, content: string): Promise<IoResu
     await mkdir(dirname(path), { recursive: true })
     await writeFile(tmp, content, 'utf8')
     await rename(tmp, path)
+    // 纪律 17：自写回声必须抑制。**记录点必须在这里**——写盘的唯一漏斗上。
+    // 记在调用方（各个 service 各记一次）迟早会漏一处，而漏的表现是「保存一次
+    // 自我重载一次」：一次抖动、光标可能跳，很难一眼归因到某个没记的调用点。
+    // stat 失败不算写失败（文件已经落地了），只是这次回声抑制不了，最坏是多一次重载。
+    await stat(path).then(
+      (info) => noteSelfWrite(path, info.mtimeMs),
+      () => undefined,
+    )
     return { ok: true, value: undefined }
   } catch (error) {
     // 失败要把临时文件收干净，否则目录里会积一堆 .xxxx.tmp

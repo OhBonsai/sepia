@@ -28,6 +28,7 @@
     "@sepia/editor": "workspace:*",
     "@sepia/ui": "workspace:*",
     "@shikijs/langs": "catalog:",
+    "chokidar": "catalog:",
     "jsonc-parser": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

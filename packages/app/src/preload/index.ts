@@ -44,6 +44,22 @@ const api = {
   dialog: {
     openMarkdown: () => ipcRenderer.invoke('dialog/open-markdown'),
   },
+  // files 域（Stage 6a，170 §1.3 申报值 = 恰好这五项）。
+  // 四个动作 + 一个订阅：外部变更与 watcher 降级共用 `onExternalChange`，
+  // 因为它们是同一件事的两种事实（纸与外部世界不同步了），分两个 key 只是把
+  // 同一个消费者拆成两半。**这里没有 read/write**——读写仍走 `file.*`，
+  // 文件管理不许成为第二条写正文的通道（不变量 3 的形态防线）。
+  files: {
+    create: (path: string, content: string) => ipcRenderer.invoke('files/create', path, content),
+    rename: (from: string, to: string) => ipcRenderer.invoke('files/rename', from, to),
+    move: (from: string, directory: string) => ipcRenderer.invoke('files/move', from, directory),
+    trash: (path: string) => ipcRenderer.invoke('files/trash', path),
+    onExternalChange: (callback: (notice: unknown) => void) => {
+      const listener = (_event: unknown, notice: unknown): void => callback(notice)
+      ipcRenderer.on('files/external-change', listener)
+      return () => ipcRenderer.removeListener('files/external-change', listener)
+    },
+  },
   session: {
     get: () => ipcRenderer.invoke('session/get'),
     set: (state: unknown) => ipcRenderer.invoke('session/set', state),
