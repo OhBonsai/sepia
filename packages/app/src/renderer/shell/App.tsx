@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 
 import {
   EMPTY_SESSION,
+  type RefCandidate,
   closeTab,
   createAnchor,
   markupReport,
@@ -38,6 +39,7 @@ const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.
 import { createAutosave, type Autosave } from '../services/autosave.ts'
 import { FileTree } from '../library/tree.tsx'
 import { Home } from '../library/home.tsx'
+import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
 import { registerCommand } from '../commands/registry.ts'
@@ -83,6 +85,12 @@ export function App(): React.JSX.Element {
   const [panelOpen, setPanelOpen] = useState(false)
   /** 侧边栏（⌘B）。**可全收起**——收起时纸就是整扇窗（§2.1 ②）。 */
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * `@` 引用（§2.1 ④）。候选表用**文件树扫描的同一份清单**——不为 `@` 再扫一次盘；
+   * 标题后台补，补好之前按纯文件名匹配（**那是常态路径，不是降级**）。
+   */
+  const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
+  const [refState, setRefState] = useState<{ from: number; query: string } | null>(null)
   /** 点徽章进来的那条线程——面板要**定位到它**，不是只把面板打开（W11 两条路都要通）。 */
   const [focusThread, setFocusThread] = useState<string | null>(null)
 
@@ -270,6 +278,25 @@ export function App(): React.JSX.Element {
     setSession(next)
     void api.setSession(next)
   }, [withCurrentPosition])
+
+  // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
+  useEffect(() => {
+    const book = session.book
+    if (book === null) {
+      setRefCandidates([])
+      return
+    }
+    void (async () => {
+      const scan = await api.scanLibrary(book)
+      if (!scan.ok) return
+      const files = scan.value.entries
+        .filter((entry) => entry.kind === 'file')
+        .map((entry) => ({ path: entry.path, name: entry.name }))
+      setRefCandidates(files) // 先给文件名——`@` 此刻就能用
+      const withTitles = await api.libraryTitles(book, files)
+      if (withTitles.ok) setRefCandidates(withTitles.value) // 标题补好再刷一次
+    })()
+  }, [session.book])
 
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
@@ -595,6 +622,27 @@ export function App(): React.JSX.Element {
       )}
       {error !== null && <div className="sepia-error">{error}</div>}
       {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
+      {refState !== null && page !== null && (
+        <RefPicker
+          candidates={refCandidates}
+          query={refState.query}
+          onClose={() => setRefState(null)}
+          onPick={(candidate) => {
+            const instance = editor.current
+            if (instance === null) return
+            // **走 CAS 通道**：区间就是刚敲的那个 `@词`，对不上就不写
+            instance.replaceGuarded({
+              range: { from: refState.from, to: refState.from + refState.query.length + 1 },
+              expectedText: `@${refState.query}`,
+              replacement: refLink(candidate),
+            })
+            setRefState(null)
+            draft.current = instance.read()
+            setDirty(true)
+            autosave.current?.bump()
+          }}
+        />
+      )}
       {panelOpen && page !== null && (
         <ThreadPanel
           view={threadView}
@@ -706,6 +754,15 @@ export function App(): React.JSX.Element {
             // 重算即判孤儿——徽章移出纸面、对话沉进置灰区；⌘⇧Z 自然回来。
             // 没有任何 undo 钩子，锚点机制本身就是它的实现。
             threadStore.current?.refresh(next)
+
+            // `@` 侦测：光标前是不是正在敲一个 `@词`。**纯字符串判断，没有 IO**——
+            // "即时"是结构决定的，不是优化出来的（§2.5 D2 <100ms）。
+            const instance = editor.current
+            if (instance === null) return
+            const at = instance.selection().from
+            const before = next.slice(Math.max(0, at - 40), at)
+            const match = /@([^\s@[\]()]*)$/.exec(before)
+            setRefState(match === null ? null : { from: at - match[0].length, query: match[1] ?? '' })
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor

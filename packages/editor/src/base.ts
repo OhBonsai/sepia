@@ -159,6 +159,15 @@ export interface MountedEditor {
   showBadges(spots: BadgeSpot[]): void
   /** ⌘⇧H 还白（W10）：全隐 ↔ 全显来回切。返回切换后的「是否全隐」。 */
   toggleBadges(): boolean
+  /**
+   * 用户发起的区间替换（`@` 引用插入，170 §2.1 ④）。
+   *
+   * **走的是与落笔同一条 CAS 通道**——不是另开一条写路径。理由：
+   * `MountedEditor` 不交出 `EditorView`，是不变量 3 在类型上成立的全部依据；
+   * 一旦为了插一个链接加一个"随便写"的方法，那个依据就没了。
+   * 这里同样只接受 `{range, expectedText, replacement}`，对不上就不写。
+   */
+  replaceGuarded(request: ApplyMarkupRequest): ApplyMarkupResult
 }
 
 /**
@@ -226,6 +235,9 @@ export function mountEditor(options: MountOptions): MountedEditor {
     // 徽章：传全量。徽章是由线程按当前正文**算出来的**，不是增量维护的状态——
     // 算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug。
     showBadges: (spots) => view.dispatch({ effects: setBadges.of(spots) }),
+    // 与落笔同一条 CAS 实现；`run` 传空打点器——`@` 插入不是 markup，
+    // 不该往 m0–m5 那条时间轴上写东西（150 纪律 22 的口径不许混）
+    replaceGuarded: (request) => applyMarkup(view, request, { mark: () => undefined }),
     toggleBadges: () => {
       const next = !badgesHidden(view)
       view.dispatch({ effects: setBadgesHidden.of(next) })

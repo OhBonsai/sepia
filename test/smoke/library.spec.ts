@@ -157,3 +157,34 @@ test('#13 DoD：树扫描不挡"可写"——t0–t5 攒齐，树在其后才到
   // 树随后异步到位——**它在 t5 之后**，所以此刻断言"最终会有"，而不是"立刻有"
   await expect(win.locator('[data-sepia-tree-kind="file"]').first()).toBeVisible({ timeout: 10_000 })
 })
+
+test('#9 `@` 引用：出列表 → 选中插入标准 md 链接 → 链接可开', async () => {
+  const fixture = await makeBook()
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
+  await win.waitForSelector('.cm-content')
+  // 候选表是异步扫来的——等它到位（这一步在 t5 之后，不挡可写）
+  await win.waitForTimeout(800)
+
+  await win.locator('.cm-content').click()
+  await win.keyboard.press('Meta+ArrowDown')
+  await win.keyboard.type('见 @b')
+
+  // 一：列表出来了，且命中的是 b.md
+  const picker = win.locator('[data-sepia-refs]')
+  await expect(picker, '按下 @ 之后没有列表').toBeVisible({ timeout: 3_000 })
+  await expect(win.locator('[data-sepia-ref="b.md"]')).toHaveCount(1)
+
+  // 二：回车插入——**标准 markdown 链接**，不是 wiki 链接（守 markdown 纯度）
+  await win.keyboard.press('Enter')
+  await expect(picker).toHaveCount(0)
+  const text = await win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? '')
+  expect(text, '插进去的不是标准 md 链接').toContain('](b.md)')
+  expect(text, '不许插 wiki 链接').not.toContain('[[')
+  // 标题建好时用标题作链接文字
+  expect(text).toContain('[乙的标题]')
+})

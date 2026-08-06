@@ -462,3 +462,32 @@ body {
 .sepia-home-label { font-size: 12px; color: var(--sepia-ink-muted); }
 .sepia-home-recent { padding: 4px 0; font-size: 14px; cursor: pointer; }
 .sepia-home-recent:hover { color: var(--sepia-syn-link); }
+
+/* `@` 引用浮层（170 §2.1 ④）：贴着正文出现的一小列，不是对话框。 */
+.sepia-refs {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 20;
+  width: 360px;
+  max-height: 40vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  transform: translateX(-50%);
+}
+
+.sepia-ref {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
+.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
