@@ -20,6 +20,34 @@ const LAUNCH_ARGS = process.env['CI'] ? [APP_ENTRY, '--no-sandbox'] : [APP_ENTRY
 
 const run = promisify(execFile)
 
+/**
+ * 走一遍「切回窗口 → 对账」这条兜底链。
+ *
+ * **不许去抢真实焦点。** 一开始写的是 `blur()` + `app.focus({ steal: true })`，
+ * 它确实能让事件发出来——代价是把**用户桌面的焦点抢过来**，人正在别处打字，
+ * 字就敲进了测试窗口（跑的时候真的发生了）。测试不许碰用户的机器。
+ *
+ * 于是拆成两半，各自断言各自那一半，合起来才是完整的链：
+ *   ① **接线在不在**——`window.on('focus')` 真的挂了监听（结构面）
+ *   ② **链通不通**——从这个事件出发，对账 → 通知 → 纸上重载（行为面）
+ *
+ * **它证不了 Electron 自己会在切回窗口时发 focus**（那是 Electron 的行为，
+ * 不是我们的代码），也证不了 macOS 的窗口管理。这条边界写在这儿，
+ * 免得下次有人以为这条检查覆盖了"用户切回窗口"这件事本身。
+ */
+async function refocusChain(app: ElectronApplication): Promise<void> {
+  const wired = await app.evaluate(async ({ BrowserWindow }) => {
+    const [target] = BrowserWindow.getAllWindows()
+    if (target === undefined) return 0
+    const count = target.listenerCount('focus')
+    // 从真实的事件出发走后半条链。**不抢焦点**：`emit` 只在主进程里
+    // 触发同一个监听器，屏幕上什么都不会发生。
+    target.emit('focus')
+    return count
+  })
+  expect(wired, '窗口上压根没挂 focus 监听——对账兜底的触发点没接上').toBeGreaterThan(0)
+}
+
 const LINES = Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 行 —— 原始正文。`)
 const BODY = `${LINES.join('\n')}\n`
 
@@ -291,11 +319,7 @@ test('检查 9 · watcher 失效降级：focus 对账仍抓到外部变更', asy
   await window.waitForTimeout(1_000)
   expect(await docText(window), '事件这条路本该是瞎的').not.toContain('降级期间被外部改过')
 
-  await app.evaluate(({ BrowserWindow }) => {
-    const [target] = BrowserWindow.getAllWindows()
-    target?.blur()
-    target?.focus()
-  })
+  await refocusChain(app)
 
   await expect.poll(() => docText(window), { timeout: 8_000 }).toContain('降级期间被外部改过')
 

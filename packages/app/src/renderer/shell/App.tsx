@@ -13,6 +13,9 @@ import {
   updateTab,
   type EngineStatus,
   type MarkupRun,
+  type RetryHandle,
+  retryWithBackoff,
+  shouldInterceptClose,
   type SessionState,
   type Thread,
   type ThreadView,
@@ -42,7 +45,9 @@ import { Home } from '../library/home.tsx'
 import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
-import { execute, registerCommand } from '../commands/registry.ts'
+import { entries as commandEntries, execute, registerCommand } from '../commands/registry.ts'
+import { Cheatsheet } from './cheatsheet.tsx'
+import { InfoOverlay } from './info.tsx'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
@@ -78,6 +83,38 @@ export function App(): React.JSX.Element {
   // 纸角持久警示点（架构 §4.2 写盘失败的表现）：**恢复即消**，所以是状态不是一次性提示。
   // 与 `.sepia-error` 那条横幅并存：横幅说"这次没存上"，警示点说"现在还没存上"。
   const [saveWarning, setSaveWarning] = useState(false)
+  /**
+   * 保存成功的**一次性微反馈**（D-30）：纸角极轻一闪 600ms 后消失，无 toast 无文案。
+   * 与警示点**同族同位**——成功淡、失败持久。这样"出事"与"没事"用的是同一处视线，
+   * 不必再学第二个位置。
+   */
+  const [savePulse, setSavePulse] = useState(false)
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 重试耗尽 = 写盘这条路确认不可用。它是**拦截关闭的唯一前提**（架构 §4.9）。 */
+  const [writeExhausted, setWriteExhausted] = useState(false)
+  const retry = useRef<RetryHandle | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [commitInfo, setCommitInfo] = useState<{ hash: string | null; failed: boolean }>({
+    hash: null,
+    failed: false,
+  })
+  /**
+   * 编辑器实例的世代号。**每挂上一个新实例就 +1。**
+   *
+   * 为什么需要它：editor 是 `useRef`，而 ref 的赋值**不会触发重渲染**，effect 也就
+   * 看不见"实例到位了"这件事。而 markdown 层是动态 import 的，实例到位比父组件的
+   * effect 晚得多——于是开机那一次 `editor.current?.showBadges(...)` 恒为 no-op，
+   * 打开一篇有痕迹的 page 看不到任何徽章，要随便敲个字才冒出来。
+   * happy-path 串联实测抓到的两处之一。
+   */
+  const [editorEpoch, setEditorEpoch] = useState(0)
+  const [keysOpen, setKeysOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
+  /** 拦截关闭的确认框（架构 §4.9 的**唯一例外**）。null = 没在拦。 */
+  const [closeBlocked, setCloseBlocked] = useState(false)
+  /** 用户已经选了「仍然退出」——下一次关闭放行，否则会拦住自己 */
+  const allowClose = useRef(false)
+  const guard = useRef({ dirty: false, writeExhausted: false })
   const autosave = useRef<Autosave | null>(null)
   // Stage 5b：线程与徽章。**去向是算出来的**（core 的 placeThreads），这里只存算完的结果。
   const threadStore = useRef<ThreadStore | null>(null)
@@ -178,25 +215,69 @@ export function App(): React.JSX.Element {
     return true
   }, [])
 
+  /**
+   * 「一次写盘成功了」这件事的**唯一落点**。
+   *
+   * 有两个调用方（首次写、重试写成功），所以它必须是一个函数：两处各写一遍的话，
+   * 迟早有一处忘了清 `writeExhausted`，于是写盘早就好了、关窗却还在拦——
+   * 那正是"误拦"这个最不该犯的错。
+   */
+  const markSaved = useCallback((commits: { before: string; after: string } | null): void => {
+    setDirty(false)
+    setError(null)
+    setSaveWarning(false)
+    setWriteExhausted(false)
+    setSavedAt(Date.now())
+    // commit 成对留痕（5b）。`after` 为空 = commit 这一步失败了——
+    // 写盘成功但版本没记上，这件事此前无处可见（架构 §4.2 指定 ⌘⇧I 是它的家）
+    if (commits !== null) {
+      setCommitInfo({ hash: commits.after === '' ? null : commits.after.slice(0, 7), failed: commits.after === '' })
+    }
+    // 微反馈：一闪即隐。**重复保存要重新计时**，不是叠一堆计时器
+    if (pulseTimer.current !== null) clearTimeout(pulseTimer.current)
+    setSavePulse(true)
+    pulseTimer.current = setTimeout(() => setSavePulse(false), 600)
+  }, [])
+
   const save = useCallback(
     async (options: { markupPair?: boolean } = {}): Promise<{ before: string; after: string } | null> => {
     if (!page) return null
     const content = writeFidelity(draft.current, page.fidelity)
     const written = await api.writeFile(page.path, content, options)
-    // 失败必须可见，不许静默、不许假装成功（120 §1.3）。重试归 Stage 7。
+    // 失败必须可见，不许静默、不许假装成功（120 §1.3）。
     if (!written.ok) {
       setError(t('error.save.failed'))
       setSaveWarning(true)
+      // **终态链的入口**（架构 §4.9 后半）：失败不是终点，先自己试三次。
+      // 已经在重试就不再排一条——否则每次自动写盘都叠一条链，退避形同虚设。
+      if (retry.current === null) {
+        retry.current = retryWithBackoff({
+          attempt: async () => {
+            const again = await api.writeFile(page.path, writeFidelity(draft.current, page.fidelity), options)
+            if (!again.ok) return false
+            retry.current = null
+            markSaved(again.value.commits)
+            return true
+          },
+          onExhausted: () => {
+            retry.current = null
+            // 到这儿才允许拦截关闭。在此之前一律不拦——误拦比漏拦严重得多
+            setWriteExhausted(true)
+            setError(t('save.exhausted'))
+          },
+          setTimer: (fn, ms) => setTimeout(fn, ms),
+          clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        })
+        setError(t('save.retrying'))
+      }
       return null
     }
     // 写成功了就把在飞的自动写盘作废——否则刚 ⌘S 完，防抖还会再写一遍同样的内容
     autosave.current?.cancel()
-    setDirty(false)
-    setError(null)
-    setSaveWarning(false)
+    markSaved(written.value.commits)
     return written.value.commits
   },
-    [page],
+    [page, markSaved],
   )
 
   // 自动写盘（架构 §4.2 写盘时间线）。挂在这里、逻辑在 `services/autosave.ts`——
@@ -211,6 +292,17 @@ export function App(): React.JSX.Element {
     }
   }, [page, save])
 
+  /**
+   * 画徽章。**是状态的函数，不是重算时的副作用。**
+   *
+   * 传全量（算一次画一次），比"哪条加了哪条删了"少一整类会漂的 bug；
+   * 而挂在 effect 上又比挂在 `onChange` 里多守一条：**编辑器换了一个实例**
+   * （换 page、重开）时它会自己重画，不依赖"恰好那一刻实例已经在了"。
+   */
+  useEffect(() => {
+    editor.current?.showBadges(threadView.badges.map((it) => ({ id: it.thread.id, to: it.range?.to ?? 0 })))
+  }, [threadView, editorEpoch])
+
   // 线程仓：随 page 建、随 page 拆。**四个重算入口共用一个算法**——
   // 打开、正文变、外部变更、新增，都是"按当前正文重算一遍去向"。
   useEffect(() => {
@@ -218,11 +310,11 @@ export function App(): React.JSX.Element {
     const directory = page.path.slice(0, page.path.lastIndexOf('/'))
     const store = createThreadStore({
       directory,
-      onChange: (view) => {
-        setThreadView(view)
-        // 徽章传全量：算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug
-        editor.current?.showBadges(view.badges.map((it) => ({ id: it.thread.id, to: it.range?.to ?? 0 })))
-      },
+      // **只存状态，不在这儿画**。画法见下面那个 effect——
+      // 原来是在这里直接 `editor.current?.showBadges(...)`，而开机那一次重算
+      // **发生在编辑器挂上之前**，`?.` 把这一下静静吞掉了：打开一篇有痕迹的 page，
+      // 徽章要等你随便敲一个字才冒出来。happy-path 串联实测抓到的。
+      onChange: setThreadView,
     })
     threadStore.current = store
     store.refreshNow(page.body)
@@ -512,30 +604,102 @@ export function App(): React.JSX.Element {
     [],
   )
 
+  /**
+   * 拦截关闭（架构 §4.9：⌘Q 无对话框原则的**唯一例外**）。
+   *
+   * **走 `beforeunload` 而不是新开一条桥**：这条链本来就要在 renderer 判定
+   * （脏与重试耗尽都是 renderer 的状态），而 `beforeunload` 的取消语义 Electron
+   * 原生就支持——关窗、⌘Q、Dock 退出三条路最终都要关这扇窗，都会经过它。
+   * 新开一个 `api.window.*` 只会让桥多一项，而换不到任何东西（180 §1.3 目标零增长）。
+   *
+   * **不弹系统对话框**：`beforeunload` 自带的那个框文案不可控、样式不属于这张纸。
+   * 取消掉默认行为，自己画一个，明示"有多少字没落盘"。
+   */
+  useEffect(() => {
+    guard.current = { dirty, writeExhausted }
+  }, [dirty, writeExhausted])
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      if (allowClose.current) return
+      if (!shouldInterceptClose(guard.current)) return
+      event.preventDefault()
+      setCloseBlocked(true)
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     // `save` 现在会交出成对 commit 的两点（5b），命令层不关心它——丢掉返回值即可
-    registerCommand({ id: 'file.save', title: 'cmd.file.save', key: 'Mod-s', run: () => void save() })
-    registerCommand({ id: 'file.open', title: 'cmd.file.open', key: 'Mod-o', run: pick })
-    registerCommand({ id: 'edit.find', title: 'cmd.edit.find', key: 'Mod-f', run: () => openSearch('find') })
+    // `group` / `when` 是给 ⌘/ 看板用的（T-03：绑键 / 菜单 / 看板共用这一层）。
+    // **它们只影响看板的显示**，不是执行守卫——置灰的命令从别处照样触发得了。
+    const needsPage = (context: { hasPage: boolean }): boolean => context.hasPage
+    const notInMarkup = (context: { markupOpen: boolean; hasPage: boolean }): boolean =>
+      context.hasPage && !context.markupOpen
+    registerCommand({
+      id: 'file.save',
+      title: 'cmd.file.save',
+      key: 'Mod-s',
+      group: 'file',
+      when: needsPage,
+      run: () => void save(),
+    })
+    registerCommand({ id: 'file.open', title: 'cmd.file.open', key: 'Mod-o', group: 'file', run: pick })
+    registerCommand({
+      id: 'edit.find',
+      title: 'cmd.edit.find',
+      key: 'Mod-f',
+      group: 'block',
+      when: notInMarkup,
+      run: () => openSearch('find'),
+    })
     registerCommand({
       id: 'edit.replace',
       title: 'cmd.edit.replace',
       key: 'Mod-Alt-f',
+      group: 'block',
+      when: notInMarkup,
       run: () => openSearch('replace'),
     })
-    registerCommand({ id: 'agent.summon', title: 'cmd.agent.summon', key: 'Mod-k', run: summon })
+    registerCommand({
+      id: 'agent.summon',
+      title: 'cmd.agent.summon',
+      key: 'Mod-k',
+      group: 'agent',
+      when: needsPage,
+      run: summon,
+    })
+    registerCommand({
+      id: 'view.keys',
+      title: 'cmd.keys.board',
+      key: 'Mod-/',
+      group: 'file',
+      run: () => setKeysOpen((shown) => !shown),
+    })
+    registerCommand({
+      id: 'view.info',
+      title: 'cmd.info.panel',
+      key: 'Mod-Shift-i',
+      group: 'file',
+      when: needsPage,
+      run: () => setInfoOpen((shown) => !shown),
+    })
     // ⌘⇧H 还白（W10）：全隐 ↔ 全显。**只切显示，线程一条不少**
     registerCommand({
       id: 'threads.hide',
       title: 'cmd.threads.hide',
       key: 'Mod-Shift-h',
+      group: 'agent',
+      when: needsPage,
       run: () => void editor.current?.toggleBadges(),
     })
     registerCommand({
       id: 'library.sidebar',
       title: 'cmd.library.sidebar',
       key: 'Mod-b',
+      group: 'file',
       run: () => setSidebarOpen((openNow) => !openNow),
     })
     // 多 Tab（170 §2.1 ①）。⌘W 关、⌘⇧[ ⌘⇧] 切——与浏览器同一套肌肉记忆
@@ -543,23 +707,30 @@ export function App(): React.JSX.Element {
       id: 'tab.close',
       title: 'cmd.tab.close',
       key: 'Mod-w',
+      group: 'file',
+      when: needsPage,
       run: () => void closeTabAt(sessionRef.current.active),
     })
     registerCommand({
       id: 'tab.prev',
       title: 'cmd.tab.prev',
       key: 'Mod-Shift-[',
+      group: 'file',
       run: () => void switchTab(sessionRef.current.active - 1),
     })
     registerCommand({
       id: 'tab.next',
       title: 'cmd.tab.next',
       key: 'Mod-Shift-]',
+      group: 'file',
       run: () => void switchTab(sessionRef.current.active + 1),
     })
     registerCommand({
       id: 'threads.panel',
       title: 'cmd.threads.panel',
+      // **没有 key**——这笔入口债（6b 记的）从此每次按 ⌘/ 都会以「未绑定」被看见一次
+      group: 'agent',
+      when: needsPage,
       run: () => setPanelOpen((isOpen) => !isOpen),
     })
   }, [save, pick, openSearch, summon, closeTabAt, switchTab])
@@ -567,7 +738,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return
-      if (event.key === 's') {
+      if (event.key === '/') {
+        // ⌘/ 快捷键看板（D-32）。**只读**，不执行任何命令
+        event.preventDefault()
+        void execute('view.keys')
+      } else if (event.key === 'I' && event.shiftKey) {
+        // ⌘⇧I 信息浮层（D-30；⌘I 已归斜体，故用 ⌘⇧I）
+        event.preventDefault()
+        void execute('view.info')
+      } else if (event.key === 's') {
         event.preventDefault()
         void save()
       } else if (event.key === 'o') {
@@ -744,6 +923,57 @@ export function App(): React.JSX.Element {
       )}
       {error !== null && <div className="sepia-error">{error}</div>}
       {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
+      {/* 保存微反馈（D-30）：与警示点同位，成功淡、失败持久 */}
+      {savePulse && <div className="sepia-save-pulse" data-sepia-save-pulse="on" />}
+      {closeBlocked && (
+        <div className="sepia-close-blocked" data-sepia-close-blocked="open">
+          <div className="sepia-close-blocked-title">{t('close.blocked.title')}</div>
+          <div className="sepia-close-blocked-body">
+            {t('close.blocked.body')}
+            {` (${String(draft.current.length)})`}
+          </div>
+          <div className="sepia-close-blocked-actions">
+            <button
+              type="button"
+              data-sepia-close-blocked-action="quit"
+              onClick={() => {
+                allowClose.current = true
+                setCloseBlocked(false)
+                window.close()
+              }}
+            >
+              {t('close.blocked.quit')}
+            </button>
+            <button
+              type="button"
+              data-sepia-close-blocked-action="cancel"
+              onClick={() => setCloseBlocked(false)}
+            >
+              {t('close.blocked.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+      {keysOpen && (
+        <Cheatsheet
+          entries={commandEntries({ markupOpen: markup !== null, hasPage: page !== null, hasBook: session.book !== null })}
+          onClose={() => setKeysOpen(false)}
+        />
+      )}
+      {infoOpen && page !== null && (
+        <InfoOverlay
+          words={draft.current.length}
+          savedAt={savedAt}
+          commit={commitInfo.hash}
+          commitFailed={commitInfo.failed}
+          threads={threadView.badges.length}
+          orphans={threadView.orphans.length}
+          book={session.book}
+          path={page.path}
+          agentReady={engine === 'ready'}
+          onClose={() => setInfoOpen(false)}
+        />
+      )}
       {refState !== null && page !== null && (
         <RefPicker
           candidates={refCandidates}
@@ -881,6 +1111,9 @@ export function App(): React.JSX.Element {
           }}
           onEditorReady={(instance) => {
             editor.current = instance
+            // **编辑器是异步挂上的**（markdown 层走动态 import），所以"实例到位"
+            // 本身是一个会迟到的事件，必须能被 effect 观察到——见画徽章那个 effect。
+            setEditorEpoch((epoch) => epoch + 1)
           }}
           onBadgeClick={(id) => {
             // W11：点徽章与开面板是同一个面板的两条入口。点进来的这条要**直接展开**，
