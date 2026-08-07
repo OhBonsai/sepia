@@ -1,7 +1,7 @@
 ---
 stage: 7
 title: 收尾
-status: draft   # 入口条件：6b 人工轮通过并合并进 master。定稿后改 planned
+status: planned # 计划已人审定稿；入口条件已满足（6b 人工轮八项通过并已合并进 master，2026-08-06）
 dod: happy-path 验收清单全绿（机器面 smoke 全绿 + 人工分镜走查全过）；保存失败终态链（提示→重试3→拦截关闭）可证；⌘/ 面板让全部已注册命令有入口
 checks_added: 0
 checks_reverse_verified: 0
