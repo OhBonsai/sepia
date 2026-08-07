@@ -1,4 +1,14 @@
-import type { FileNotice, IoResult, RefCandidate, ResolvedTheme, SessionState, Thread, TreeScan } from '@sepia/core'
+import type {
+  AppConfig,
+  FileNotice,
+  IoResult,
+  RefCandidate,
+  ResolvedTheme,
+  SessionState,
+  Thread,
+  TreeScan,
+  Workspace,
+} from '@sepia/core'
 
 // 纪律 1：**组件不得 import window.api**。整个 renderer 里只有这个文件碰它。
 // lint 规则盯着 `renderer/` 下除本文件与 agent-bridge.ts 之外的所有位置。
@@ -14,6 +24,11 @@ interface Bridge {
     ): Promise<IoResult<{ commits: { before: string; after: string } | null }>>
   }
   dialog: { openMarkdown(): Promise<string | null>; openDirectory(): Promise<string | null> }
+  config: { get(): Promise<IoResult<AppConfig>>; set(patch: Partial<AppConfig>): Promise<IoResult<AppConfig>> }
+  workspaces: {
+    list(): Promise<IoResult<Workspace[]>>
+    add(dir: string): Promise<IoResult<Workspace[]>>
+  }
   library: {
     scan(dir: string): Promise<IoResult<TreeScan>>
     recents(dir: string, page?: string): Promise<IoResult<string[]>>
@@ -54,6 +69,14 @@ export const api = {
     bridge.file.write(path, content, options),
   openMarkdown: () => bridge.dialog.openMarkdown(),
   openDirectory: () => bridge.dialog.openDirectory(),
+  config: {
+    get: () => bridge.config.get(),
+    set: (patch: Partial<AppConfig>) => bridge.config.set(patch),
+  },
+  workspaces: {
+    list: () => bridge.workspaces.list(),
+    add: (dir: string) => bridge.workspaces.add(dir),
+  },
   scanLibrary: (dir: string) => bridge.library.scan(dir),
   /** 传 page = 打开了它（置顶）；不传 = 纯读。 */
   libraryRecents: (dir: string, page?: string) => bridge.library.recents(dir, page),

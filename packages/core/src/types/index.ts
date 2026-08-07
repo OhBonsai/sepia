@@ -52,6 +52,12 @@ export interface AppConfig {
   libraryRecentsLimit: number
   /** 图片落点目录（D-40：默认 `assets/`，可配置）。 */
   imageDirectory: string
+  /** Tab 缩进宽度（设置「笔 › 输入」）。 */
+  tabWidth: number
+  /** frontmatter 呈现三态（F8 与设置「纸 › 笔记属性」联动）。 */
+  frontmatterView: 'table' | 'source' | 'hidden'
+  /** 外链打开方式（F18：内嵌浏览器 / 系统浏览器）。 */
+  externalLinks: 'embedded' | 'system'
   /** 文件监听（Stage 6a）。只放真读的字段——见架构 §4.5 那句「不是建设清单」。 */
   watcher: {
     /**

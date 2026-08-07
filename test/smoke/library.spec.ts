@@ -92,14 +92,27 @@ test('#8 主页：无 tab 时出现，两条路都在；有 book 时最近列表
   await expect(win.locator('[data-sepia-home]')).toBeVisible()
   await expect(win.locator('[data-sepia-home-action="book"]')).toBeVisible()
   await expect(win.locator('[data-sepia-home-action="page"]')).toBeVisible()
-  // **主页也是纸**：版心与正文同宽，不是卡片网格
-  const box = await win.locator('.sepia-home').boundingBox()
-  expect(box!.width).toBeLessThanOrEqual(760)
+  // **主页也是纸**：内容栏与正文同宽，不是卡片网格。
+  // 量的是**内容栏**而不是整个主页——P2 起主页按原型是两栏满宽（左栏 220px +
+  // 主区），把 760 套在整扇窗上等于要求主页不许有左栏。
+  const box = await win.locator('[data-sepia-home-search]').boundingBox()
+  expect(box!.width, '主页内容栏比正文还宽——它开始像个仪表盘了').toBeLessThanOrEqual(760)
+
+  // 左栏在，且 workspace 列表与设置/帮助都有位置（H1/H6/H7）
+  await expect(win.locator('.sepia-home-side')).toBeVisible()
+  await expect(win.locator('[data-sepia-home-action="settings"]')).toBeVisible()
 })
 
 test('#7 文件树：列出 book 里的 md，点击开 tab', async () => {
   const fixture = await makeBook()
-  const win = await launch(fixture, { version: 2, book: fixture.book, tabs: [], active: 0 })
+  // **开着一个 tab**：P2 起文件树属于 Page 页，主页有它自己的左栏（workspace 列表）。
+  // 两个左栏并排是原型里没有的东西。
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
 
   const tree = win.locator('.sepia-tree')
   await expect(tree).toBeVisible()
@@ -119,7 +132,7 @@ test('#7b 文件树超限 → **降级为只列顶层，并且说出来**', asyn
   // 上限调到 5：fixture 有 30+ 个文件，必然触发降级
   const win = await launch(
     fixture,
-    { version: 2, book: fixture.book, tabs: [], active: 0 },
+    { version: 2, book: fixture.book, tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }], active: 0 },
     { libraryTreeEntryLimit: 5 },
   )
 
@@ -383,8 +396,10 @@ test('#7c 没有 .md 的文件夹作 book → **说人话**，不是两个哑目
   // 一：**一个哑目录行都没有**——没有 md 的目录不进树
   await expect(win.locator('[data-sepia-tree-kind="dir"]'), '空目录还在树里').toHaveCount(0)
   await expect(win.locator('[data-sepia-tree-kind="file"]')).toHaveCount(0)
-  // 二：**说了人话**，而不是留一片空白让人以为坏了
-  await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible()
+  // 二：**说了人话**，而不是留一片空白让人以为坏了。
+  // P2 之后这句话归**主页**：一个 .md 都没有的 book，用户就停在主页，
+  // 树的空态他一辈子看不到——而这正是最需要这句话的时刻。
+  await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible({ timeout: 8_000 })
 })
 
 test('#8b 关掉所有 tab → 点最近的**游离** page → 真的打开（不是"打不开这个文件"）', async () => {

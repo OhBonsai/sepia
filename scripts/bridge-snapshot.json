@@ -19,7 +19,13 @@
     "threads 没有 delete——删除是 save 一份不含它的表；git 域只读，没有写路径（不变量 3）。",
     "Stage 6b 的增长：api.library.scan/recents/titles 三项 + api.dialog.openDirectory 一项 = 28 → 32。",
     "library 域只读（扫描/最近/标题），没有写路径；文件操作仍走 files 域——不变量 3 的形态防线。",
-    "Stage 6b 续：api.files.importImage / api.files.updateLinks 两项 = 32 → 34（§2.3 申报 +5，实际 +6：openDirectory 未计入原申报，见 170 §2.9）。"
+    "Stage 6b 续：api.files.importImage / api.files.updateLinks 两项 = 32 → 34（§2.3 申报 +5，实际 +6：openDirectory 未计入原申报，见 170 §2.9）。",
+    "",
+    "Stage 8 的增长（190 §3 预申报，预算 +10）：api.workspaces.list/add 两项——",
+    "多 book（H1）需要一份已知 book 列表。**没有 remove**：移除 book 归设置页，",
+    "而设置页走 config 通道，不必在这儿再开一个口子。",
+    "同期 +2：api.config.get/set（设置页）。写是**合并补丁**不是整份覆盖——",
+    "config.json 里可能有用户手写的或未来版本的键，整份覆盖会把它们抹掉。"
   ],
   "surface": [
     "api.agent.interrupt",
@@ -34,6 +40,8 @@
     "api.app.versions.chrome",
     "api.app.versions.electron",
     "api.app.versions.node",
+    "api.config.get",
+    "api.config.set",
     "api.dialog.openDirectory",
     "api.dialog.openMarkdown",
     "api.file.read",
@@ -55,6 +63,8 @@
     "api.theme.get",
     "api.theme.onChange",
     "api.threads.load",
-    "api.threads.save"
+    "api.threads.save",
+    "api.workspaces.add",
+    "api.workspaces.list"
   ]
 }

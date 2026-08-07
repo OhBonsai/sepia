@@ -21,6 +21,17 @@ export const copy = {
   'error.page.missing': '上次的 page 已经不在原处了',
 
   // Tab 栏终态与右侧区（190 P0）
+  'settings.title': '设置',
+  'settings.pending': '即将推出',
+  'settings.new': '新',
+  'cmd.settings': '设置',
+  'home.notes': '笔记本',
+  'home.settings': '设置',
+  'home.help': '帮助',
+  'home.new.page': '新建笔记',
+  'home.search.in': '在',
+  'home.search.nobook': '搜索笔记…',
+  'home.empty': '还没有选文件夹作 book。',
   'tabs.home': '主页',
   'tabs.new': '新建笔记',
   'tabs.status': '状态',

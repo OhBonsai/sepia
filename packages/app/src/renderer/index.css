@@ -435,68 +435,6 @@ body {
 
 /* box-sizing：内边距算进版心里。不加的话 max-width:760 + padding:24 = 808，
    主页就比正文宽出一圈——版心这条约定要在两处都成立才叫约定。 */
-.sepia-home {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 64px 24px;
-}
-
-.sepia-home-actions { display: flex; gap: 8px; }
-
-.sepia-home button {
-  padding: 6px 14px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--sepia-ink);
-  background: transparent;
-  border: 1px solid var(--sepia-rule);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.sepia-home-label { font-size: 12px; color: var(--sepia-ink-muted); }
-.sepia-home-recent { padding: 4px 0; font-size: 14px; cursor: pointer; }
-.sepia-home-recent:hover { color: var(--sepia-syn-link); }
-
-/* `@` 引用浮层（170 §2.1 ④）：贴着正文出现的一小列，不是对话框。 */
-/* **位置由内联 style 给**（贴着光标，见 refs.tsx）——这里只管长相。
-   钉在窗口底部中央是错的：那是命令面板的位置，不是行内浮层的位置。 */
-.sepia-refs {
-  position: fixed;
-  z-index: 20;
-  max-height: 40vh;
-  padding: 4px;
-  overflow-y: auto;
-  background: var(--sepia-paper);
-  border: 1px solid var(--sepia-rule);
-  border-radius: 4px;
-}
-
-.sepia-ref {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 4px 8px;
-  font-size: 13px;
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
-.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
-
-/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
-.sepia-links-list {
-  padding: 4px 0 0 0;
-  font-size: 12px;
-  color: var(--sepia-ink-muted);
-}
-
 /* ── 保存微反馈（D-30）─────────────────────────────────────────────────
    与警示点**同族同位**：成功淡一下就走，失败留着不动。同一处视线回答
    "存上了没有"，不必再学第二个位置。600ms 由 JS 计时（CSS 只管观感）。 */
@@ -962,4 +900,338 @@ body {
   padding: 4px 0;
   font-size: 12px;
   color: var(--sepia-danger);
+}
+
+/* ── 恢复：`@` 选择器与更新链接清单 ─────────────────────────────────
+   （190 P2 重写主页样式时，我按注释边界整段切，把这两块一并切掉了。
+   `#9` 当场红：`@` 浮层横向偏了 320px——position:fixed 没了，它退回文档流。） */
+.sepia-refs {
+  position: fixed;
+  z-index: 20;
+  max-height: 40vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-ref {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
+.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
+
+/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
+.sepia-links-list {
+  padding: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+/* ── P2 · 主页终态（原型 Home Layout）─────────────────────────────────
+   左栏 220px（workspace 列表 + 设置/帮助）｜ 主区（搜索 + 最近笔记流）。
+   **主页也是纸**：同一套字，没有插画、没有卡片网格。 */
+.sepia-home {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sepia-home-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 220px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 8px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-side-head button,
+.sepia-home-side-foot button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-home-books {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sepia-home-book {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.sepia-home-book[data-sepia-home-book-current='true'],
+.sepia-home-book:hover {
+  background: var(--sepia-surface);
+}
+
+/* 字母头像方块：**取首字不转写**——中文名转拼音首字母会挤成一堆看不出区别 */
+.sepia-home-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+.sepia-home-side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding-top: 8px;
+  font-size: 13px;
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-main {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 40px;
+  overflow-y: auto;
+}
+
+.sepia-home-search {
+  width: 100%;
+  max-width: 720px;
+  padding: 7px 10px;
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-home-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  max-width: 720px;
+  padding-bottom: 6px;
+  margin: 26px 0 6px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-label button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-home-recent {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 720px;
+  padding: 5px 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-home-recent:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-home-recent-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sepia-home-recent-time {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-empty {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 24px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-empty button {
+  padding: 4px 10px;
+  color: var(--sepia-ink);
+  cursor: pointer;
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* ── P3 · 设置浮层（S1–S5）──────────────────────────────────────────
+   **盖在当前界面上，不是独立路由页**——关掉就回到关闭前那张纸。 */
+.sepia-set-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sepia-scrim);
+}
+
+.sepia-set {
+  display: flex;
+  width: min(940px, 92vw);
+  height: min(640px, 86vh);
+  overflow: hidden;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-set-nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 190px;
+  padding: 14px 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--sepia-rule);
+}
+
+/* 一级是**小灰字不可点**（S2）：它是分组标题，不是路由 */
+.sepia-set-group-title {
+  padding: 12px 8px 4px;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-set-nav-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.sepia-set-nav-item[data-sepia-set-page-active='true'],
+.sepia-set-nav-item:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-set-foot {
+  padding: 12px 8px 0;
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-body {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 22px;
+  overflow-y: auto;
+}
+
+/* 三级分组标题带下划线（原型 Layout） */
+.sepia-set-section-title {
+  padding-bottom: 4px;
+  margin: 18px 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  background: var(--sepia-surface);
+  border-radius: 4px;
+}
+
+.sepia-set-row[data-sepia-set-item-pending='true'] {
+  opacity: 0.5;
+}
+
+.sepia-set-row-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.sepia-set-row-desc {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-set-row-control input,
+.sepia-set-row-control select {
+  padding: 2px 6px;
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+.sepia-set-pending {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+/* S4「新」角标 */
+.sepia-set-new {
+  padding: 0 4px;
+  margin-left: 6px;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--sepia-syn-function);
+  border: 1px solid var(--sepia-syn-function);
+  border-radius: 2px;
 }

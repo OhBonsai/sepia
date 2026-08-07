@@ -88,6 +88,19 @@ const api = {
     recents: (dir: string, page?: string) => ipcRenderer.invoke('library/recents', dir, page),
     titles: (dir: string, items: unknown[]) => ipcRenderer.invoke('library/titles', dir, items),
   },
+  // config 域（190 P3 设置页）：读全量、写补丁。**没有 reset**——
+  // 「恢复默认」是删掉 config.json 里那几行，用同一条写通道就够。
+  config: {
+    get: () => ipcRenderer.invoke('config/get'),
+    set: (patch: unknown) => ipcRenderer.invoke('config/set', patch),
+  },
+
+  // workspaces 域（190 P2 / H1 多 book）。**两项**：读、加——移除归设置页。
+  workspaces: {
+    list: () => ipcRenderer.invoke('workspaces/list'),
+    add: (dir: string) => ipcRenderer.invoke('workspaces/add', dir),
+  },
+
   session: {
     get: () => ipcRenderer.invoke('session/get'),
     set: (state: unknown) => ipcRenderer.invoke('session/set', state),

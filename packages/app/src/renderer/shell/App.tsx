@@ -5,13 +5,16 @@ import {
   EMPTY_SESSION,
   type RefCandidate,
   closeTab,
+  DEFAULT_CONFIG,
   createAnchor,
+  keyCaps,
   referencedPages,
   markupReport,
   openTab,
   tabPath,
   tabRelative,
   updateTab,
+  type AppConfig,
   type CopyKey,
   type EngineStatus,
   type MarkupRun,
@@ -57,6 +60,7 @@ import { Cheatsheet } from './cheatsheet.tsx'
 import { InfoOverlay } from './info.tsx'
 import { SlashMenu, type SlashItem } from '../editor/slash.tsx'
 import { PaperTop } from './papertop.tsx'
+import { Settings } from './settings.tsx'
 import { StatusOverlay } from './status.tsx'
 import { Rightbar } from './rightbar.tsx'
 import { Tabs } from './tabs.tsx'
@@ -121,6 +125,10 @@ export function App(): React.JSX.Element {
    */
   const [editorEpoch, setEditorEpoch] = useState(0)
   const [keysOpen, setKeysOpen] = useState(false)
+  /** ⌘, 设置浮层（P3）。 */
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  /** 全量 config。设置页读它、改它；**改完立刻生效**，不必重启。 */
+  const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [infoOpen, setInfoOpen] = useState(false)
   /** 拦截关闭的确认框（架构 §4.9 的**唯一例外**）。null = 没在拦。 */
   const [closeBlocked, setCloseBlocked] = useState(false)
@@ -738,6 +746,12 @@ export function App(): React.JSX.Element {
     ),
   )
 
+  useEffect(() => {
+    void api.config.get().then((result) => {
+      if (result.ok) setAppConfig(result.value)
+    })
+  }, [])
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     // `save` 现在会交出成对 commit 的两点（5b），命令层不关心它——丢掉返回值即可
@@ -850,6 +864,13 @@ export function App(): React.JSX.Element {
       run: () => setKeysOpen((shown) => !shown),
     })
     registerCommand({
+      id: 'view.settings',
+      title: 'cmd.settings',
+      key: 'Mod-,',
+      group: 'file',
+      run: () => setSettingsOpen((shown) => !shown),
+    })
+    registerCommand({
       id: 'view.status',
       title: 'cmd.status.panel',
       group: 'file',
@@ -918,7 +939,11 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return
-      if (event.key === '/') {
+      if (event.key === ',') {
+        // ⌘, 设置（macOS 惯例，S1）
+        event.preventDefault()
+        void execute('view.settings')
+      } else if (event.key === '/') {
         // ⌘/ 快捷键看板（D-32）。**只读**，不执行任何命令
         event.preventDefault()
         void execute('view.keys')
@@ -1122,6 +1147,30 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {statusOpen && <StatusOverlay engine={engine} onClose={() => setStatusOpen(false)} />}
+      {settingsOpen && (
+        <Settings
+          config={appConfig}
+          keys={commandEntries({
+            markupOpen: markup !== null,
+            hasPage: page !== null,
+            hasBook: session.book !== null,
+          }).map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            ...(entry.spec === undefined ? {} : { spec: keyCaps(entry.spec).join('') }),
+          }))}
+          onChange={(patch) => {
+            // **先本地生效再落盘**：设置页里改一个数字要立刻看得见，
+            // 等一次 IPC 往返会让开关有"迟滞感"
+            setAppConfig((now) => ({ ...now, ...patch }))
+            void api.config.set(patch).then((result) => {
+              // 落盘后以 main 的结果为准——非法值会在那边被退回默认，本地要跟上
+              if (result.ok) setAppConfig(result.value)
+            })
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {keysOpen && (
         <Cheatsheet
           entries={commandEntries({ markupOpen: markup !== null, hasPage: page !== null, hasBook: session.book !== null })}
@@ -1249,8 +1298,13 @@ export function App(): React.JSX.Element {
         />
       )}
       {/* 侧边栏 + 纸：**收起时纸就是整扇窗**（⌘B，§2.1 ②） */}
-      <div className="sepia-body" data-sepia-sidebar={sidebarOpen && session.book !== null ? 'open' : 'closed'}>
-        {sidebarOpen && session.book !== null && (
+      <div
+        className="sepia-body"
+        data-sepia-sidebar={sidebarOpen && session.book !== null && page !== null && !atHome ? 'open' : 'closed'}
+      >
+        {/* **主页不挂文件树**：主页有它自己的左栏（workspace 列表），
+            两个左栏并排是原型里没有的东西，也让"我在哪儿"多了一处要看。 */}
+        {sidebarOpen && session.book !== null && page !== null && !atHome && (
           <FileTree
             book={session.book}
             current={session.tabs[session.active]?.page ?? null}
@@ -1280,8 +1334,17 @@ export function App(): React.JSX.Element {
       {page === null || atHome ? (
         <Home
           book={session.book}
-          onOpenBook={chooseBook}
-          onOpenPage={(absolute) => void openInTab(absolute)}
+          onOpenBook={(dir) => {
+            setAtHome(false)
+            chooseBook(dir)
+          }}
+          onOpenPage={(absolute) => {
+            setAtHome(false)
+            void openInTab(absolute)
+          }}
+          onSettings={() => setSettingsOpen(true)}
+          onKeys={() => setKeysOpen(true)}
+          onNewPage={() => void execute('files.new')}
         />
       ) : (
         <>
