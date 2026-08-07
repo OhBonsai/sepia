@@ -496,3 +496,201 @@ body {
   font-size: 12px;
   color: var(--sepia-ink-muted);
 }
+
+/* ── 保存微反馈（D-30）─────────────────────────────────────────────────
+   与警示点**同族同位**：成功淡一下就走，失败留着不动。同一处视线回答
+   "存上了没有"，不必再学第二个位置。600ms 由 JS 计时（CSS 只管观感）。 */
+.sepia-save-pulse {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 10;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sepia-ink-muted);
+  pointer-events: none;
+  animation: sepia-pulse 600ms ease-out forwards;
+}
+
+@keyframes sepia-pulse {
+  0% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+/* ── ⌘/ 快捷键看板（D-32 / F23）────────────────────────────────────────
+   **一屏放下是硬约束**：整块 `overflow: hidden`，放不下就看得见地坏掉。
+   不给 `overflow: auto`——一旦能滚，"快捷键太多该砍功能"这个信号就永远收不到了。 */
+.sepia-keys-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sepia-scrim);
+}
+
+.sepia-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(880px, 92vw);
+  max-height: 86vh;
+  overflow: hidden;
+  padding: 20px;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-keys-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sepia-keys-title {
+  font-weight: 600;
+}
+
+.sepia-keys-search {
+  flex: 1;
+  padding: 4px 8px;
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* 三列瀑布（D-32 ②）。`columns` 而不是 grid：组的高度天然不等，
+   瀑布流让它们自己找位置，不必为每组算格子。 */
+.sepia-keys-columns {
+  columns: 3;
+  column-gap: 24px;
+  overflow: hidden;
+}
+
+.sepia-keys-group {
+  break-inside: avoid;
+  margin-bottom: 16px;
+}
+
+.sepia-keys-group-title {
+  margin: 0 0 6px;
+  padding-bottom: 2px;
+  font-size: 0.85em;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-keys-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/* 置灰 = 此刻按不了（D-32 ⑤）。**只降不透明度，不改布局**——
+   一行的高度不许随可用性变化，否则上下文一变整块看板就在抖。 */
+.sepia-keys-row[data-sepia-keys-available='false'] {
+  opacity: 0.35;
+}
+
+.sepia-keys-caps {
+  display: flex;
+  gap: 2px;
+}
+
+/* 键帽：1px 边框 + 等宽（D-32 ③）。组合键并排、不加「+」。 */
+.sepia-keycap {
+  min-width: 18px;
+  padding: 1px 4px;
+  /* 等宽栈直接写在这儿：`themeVar` 是**色板**，字体不该混进去（纪律 3 管的是色值）。
+     与正文栈同一个处理方式——正文栈也是就地写的。 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  text-align: center;
+  color: var(--sepia-ink-muted);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+.sepia-keys-unbound {
+  font-size: 0.8em;
+  font-style: normal;
+  color: var(--sepia-ink-muted);
+  opacity: 0.6;
+}
+
+.sepia-keys-foot {
+  font-size: 0.8em;
+  color: var(--sepia-ink-muted);
+}
+
+/* ── ⌘⇧I 信息浮层（D-30）：右下角一瞥，只读 ───────────────────────── */
+.sepia-info {
+  position: fixed;
+  right: 24px;
+  bottom: 28px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 220px;
+  padding: 12px 14px;
+  font-size: 0.85em;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sepia-info-label {
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-info-value {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 拦截关闭（架构 §4.9 的唯一例外）──────────────────────────────────
+   它是**唯一**一个会挡住退出的东西，所以长得像一张便条而不是系统对话框。 */
+.sepia-close-blocked {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 90vw);
+  padding: 18px 20px;
+  transform: translate(-50%, -50%);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-danger);
+  border-radius: 4px;
+}
+
+.sepia-close-blocked-title {
+  font-weight: 600;
+}
+
+.sepia-close-blocked-body {
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-close-blocked-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

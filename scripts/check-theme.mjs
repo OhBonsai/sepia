@@ -23,6 +23,13 @@ const VARS_FILE = 'packages/ui/src/theme/vars.ts'
 const PALETTE_FILE = 'packages/ui/src/theme/theme.css'
 const CM6_FILE = 'packages/editor/src/extensions/highlight.ts'
 const SHIKI_FILE = 'packages/app/src/renderer/markup/shiki-theme.ts'
+/**
+ * renderer 的样式表。**Stage 7 补进来的**：在此之前这条检查只看 CM6 与 Shiki
+ * 两个文件，于是 `index.css` 里写一个不存在的 `var(--sepia-scrim)` 一路绿到底——
+ * CSS 不报错，颜色静静地变成透明。正是本文件开头说的「C 是最静默的一道」，
+ * 而它自己漏掉了最大的那个 CSS 文件。
+ */
+const SHELL_CSS = 'packages/app/src/renderer/index.css'
 
 /** 取出文本里所有 `var(--x)` 的名字。 */
 function varNames(source) {
@@ -60,6 +67,7 @@ if (declared.size === 0) {
 for (const [file, label] of [
   [CM6_FILE, 'CM6 高亮'],
   [SHIKI_FILE, 'Shiki 主题'],
+  [SHELL_CSS, 'shell 样式表'],
 ]) {
   const used = new Set(referencedVars(read(file)))
   for (const name of used) {

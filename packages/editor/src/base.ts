@@ -94,11 +94,28 @@ export function baseExtensions(options: BaseExtensionOptions = {}): Extension[] 
     history(),
     drawSelection(),
     EditorView.lineWrapping,
-    keymap.of([...defaultKeymap, ...historyKeymap]),
+    // **应用自己占用的键，必须从 CM6 的默认表里摘掉**。
+    //
+    // 血的教训（Stage 7 实测）：`defaultKeymap` 把 `Mod-/` 绑给了 `toggleComment`，
+    // 于是按 ⌘/ 想看快捷键看板时，CM6 先一步在正文里插了一对 `<!--  -->`——
+    // **一个只读看板的快捷键改写了用户的字**。renderer 那边 `preventDefault` 拦不住它：
+    // CM6 的监听挂在 `.cm-content` 上，比 window 上的冒泡监听先跑。
+    //
+    // 所以摘除必须发生在**这里**（键根本不进 CM6），而不是在应用层补救。
+    // 新占一个 `Mod-x` 之前，先回来看看 `defaultKeymap` 里有没有它。
+    keymap.of([...defaultKeymap.filter((binding) => !APP_OWNED_KEYS.has(binding.key ?? '')), ...historyKeymap]),
     paperTheme,
     ...listeners,
   ]
 }
+
+/**
+ * 由应用层占用、CM6 不许碰的键。
+ *
+ * 只列**与 `defaultKeymap` 真的撞了的**——凭空多列一个没有害处但会让人以为
+ * 这里是"应用快捷键总表"（那张表在 command registry，⌘/ 看板从它生成）。
+ */
+const APP_OWNED_KEYS = new Set(['Mod-/'])
 
 /** 供单测用：不起 DOM 也能构造出一个可编辑的 state。 */
 export function createState(doc: string, options: BaseExtensionOptions = {}): EditorState {

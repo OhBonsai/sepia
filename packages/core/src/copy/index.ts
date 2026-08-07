@@ -20,6 +20,43 @@ export const copy = {
   'error.save.failed': '保存失败',
   'error.page.missing': '上次的 page 已经不在原处了',
 
+  // ⌘/ 快捷键看板（D-32 / F23）。**只读看板，不是命令面板**。
+  'keys.title': '快捷键',
+  'keys.search': '搜快捷键…',
+  'keys.group.inline': '行内格式',
+  'keys.group.block': '块',
+  'keys.group.agent': 'Agent',
+  'keys.group.file': '文件与视图',
+  'keys.group.trigger': '行内触发',
+  'keys.unbound': '未绑定',
+  'keys.settings.hint': '在 设置 › 快捷键 里可以改键',
+  'cmd.keys.board': '快捷键看板',
+
+  // ⌘⇧I 信息浮层（D-30）。只读，不放操作。
+  'cmd.info.panel': '信息',
+  'info.words': '字数',
+  'info.saved': '上次保存',
+  'info.saved.never': '还没保存过',
+  'info.commit': '最近 commit',
+  'info.commit.none': '还没有 commit',
+  'info.commit.failed': 'commit 失败',
+  'info.threads': '线程',
+  'info.orphans': '孤儿',
+  'info.book': 'book',
+  'info.book.none': '游离 page（不属于任何 book）',
+  'info.path': '路径',
+  'info.agent': 'Agent',
+  'info.agent.ready': '就位',
+  'info.agent.absent': '缺席',
+
+  // 写盘终态链（架构 §4.9 后半）
+  'save.retrying': '写盘失败，正在重试…',
+  'save.exhausted': '写盘反复失败——纸上的字还在，但存不进磁盘',
+  'close.blocked.title': '有字还没落盘',
+  'close.blocked.body': '写盘一直失败，现在退出会丢掉这些字。',
+  'close.blocked.quit': '仍然退出',
+  'close.blocked.cancel': '取消',
+
   'cmd.edit.find': '查找',
   'cmd.edit.replace': '替换',
   'search.placeholder': '查找…',

@@ -22,6 +22,7 @@
   --sepia-selection: #dad8ce;
   --sepia-caret: #100f0f;
   --sepia-danger: #af3029;
+  --sepia-scrim: #100f0f26;
 
   /* 语法八色（Flexoki accent 600 档）+ 结构角色 */
   --sepia-syn-mark: #b7b5ac;
@@ -51,6 +52,7 @@
     --sepia-selection: #343331;
     --sepia-caret: #cecdc3;
     --sepia-danger: #d14d41;
+    --sepia-scrim: #00000059;
 
     /* 语法八色（Flexoki accent 400 档） */
     --sepia-syn-mark: #575653;
