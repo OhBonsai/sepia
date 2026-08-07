@@ -1,5 +1,7 @@
 import { WidgetType } from '@codemirror/view'
 
+import { assetUrl } from '@sepia/core'
+
 // KaTeX **惰性加载**（001 §4.7：renderer 入口 bundle 保持小，重组件按需）。
 // 它有 ~280KB，放进同步路径直接把 t0→t3 从 316ms 顶到 630ms——冷启动 smoke 抓过。
 // 模块到位前 widget 先显示源码文本，到位后原地替换成渲染态；替换只动 widget 自己的
@@ -172,12 +174,15 @@ export class ImageWidget extends SourceWidget {
     const img = document.createElement('img')
     let src = this.src
     if (this.assetBase !== null && !/^[a-z][a-z0-9+.-]*:/i.test(src) && !src.startsWith('/')) {
-      src = `file://${this.assetBase}/${src}`
+      // **走 `sepia-asset://` 而不是 `file://`**（人裁 2026-08-06）：dev 态 renderer 由
+      // `loadURL(http://localhost)` 加载，Chromium 一律拒绝 http 源加载 file:// 子资源，
+      // 于是开发时永远看不到预览。特权 scheme 两种加载方式下都成立，
+      // 而且 main 侧的处理器只放行已登记根之内的文件——比 file:// 更窄。
+      src = assetUrl(`${this.assetBase}/${src}`)
     }
     img.src = src
     img.alt = this.alt
-    // 加载失败退回 alt 文本框——dev 服务器下 file:// 子资源会被 Chromium 拒载，
-    // 这是已知限制，真正的解法是自定义特权 scheme（001 §3.1，Stage 6 随文件域一起）。
+    // 加载失败退回 alt 文本框：路径打错、图被删、或落在可读根之外（403）。
     img.addEventListener('error', () => {
       wrap.classList.add('sepia-image-broken')
       wrap.textContent = this.alt || this.src

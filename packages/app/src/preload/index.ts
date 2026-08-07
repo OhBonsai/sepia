@@ -45,6 +45,8 @@ const api = {
   },
   dialog: {
     openMarkdown: () => ipcRenderer.invoke('dialog/open-markdown'),
+    /** 选一个文件夹作 book（主页两条路之一，§2.1 ③）。 */
+    openDirectory: () => ipcRenderer.invoke('dialog/open-directory'),
   },
   // files 域（Stage 6a，170 §1.3 申报值 = 恰好这五项）。
   // 四个动作 + 一个订阅：外部变更与 watcher 降级共用 `onExternalChange`，
@@ -56,6 +58,12 @@ const api = {
     rename: (from: string, to: string) => ipcRenderer.invoke('files/rename', from, to),
     move: (from: string, directory: string) => ipcRenderer.invoke('files/move', from, directory),
     trash: (path: string) => ipcRenderer.invoke('files/trash', path),
+    /** 收一张图进 book（§2.1 ⑤）。只增不改。 */
+    importImage: (name: string, bytes: Uint8Array, book: string) =>
+      ipcRenderer.invoke('files/import-image', name, bytes, book),
+    /** 更新链接（§2.1 ⑥）。`apply=false` 只查不改——**改不改由用户点那一下决定**。 */
+    updateLinks: (book: string, from: string, to: string, apply: boolean) =>
+      ipcRenderer.invoke('files/update-links', book, from, to, apply),
     onExternalChange: (callback: (notice: unknown) => void) => {
       const listener = (_event: unknown, notice: unknown): void => callback(notice)
       ipcRenderer.on('files/external-change', listener)
@@ -72,6 +80,13 @@ const api = {
   git: {
     diff: (directory: string, before: string, after: string, page: string) =>
       ipcRenderer.invoke('git/diff', directory, before, after, page),
+  },
+  // library 域（Stage 6b，170 §2.3 申报值）。**只读**：扫描、最近、标题补建，
+  // 没有任何写路径——文件操作仍走 files 域（不变量 3 的形态防线）。
+  library: {
+    scan: (dir: string) => ipcRenderer.invoke('library/scan', dir),
+    recents: (dir: string, page?: string) => ipcRenderer.invoke('library/recents', dir, page),
+    titles: (dir: string, items: unknown[]) => ipcRenderer.invoke('library/titles', dir, items),
   },
   session: {
     get: () => ipcRenderer.invoke('session/get'),

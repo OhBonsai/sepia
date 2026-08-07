@@ -461,7 +461,13 @@ MVP 无设置 UI——**改配置即改这个文件**，这也是后续功能开
 
 `contextIsolation: true` / `sandbox: true` / `nodeIntegration: false` / CSP 限制 `connect-src` 为 self——renderer 不连引擎（§4.3 main 代理裁决）。preload 只暴露 contextBridge 白名单，命名 REST 风格。引擎绑 127.0.0.1，随机密码 Basic Auth——只有 main 的 AgentBridge 持有密码。
 
-**renderer 用 `loadFile` 加载**（Origin 为 `null` 无妨）——main 代理裁决（140 §1.8 风险 1）之后 renderer 不连引擎，自定义特权 scheme + CORS 放通原本要解决的问题不复存在；将来若 renderer 需要直连，再引入 scheme。
+**renderer 用 `loadFile` 加载**（Origin 为 `null` 无妨）——main 代理裁决（140 §1.8 风险 1）之后 renderer 不连引擎，**为「连引擎」而引入自定义 scheme 的理由不复存在**。
+
+**但本地资源另有一条**（人裁 2026-08-06，170 人工轮 5b）：图片 widget 需要读 book 里的图，而 dev 态 renderer 由 `loadURL(http://localhost)` 加载，**Chromium 一律拒绝 http 源加载 `file://` 子资源**——打包态（file 源）能显示、开发时永远看不见预览。为此引入**唯一一个**自定义特权 scheme `sepia-asset://`（`standard` + `secure` + `supportFetchAPI: false`）。
+
+它**收窄而非放宽**了暴露面：`file://` 能读到磁盘上任何东西，而 `sepia-asset://` 的处理器只放行**已登记可读根**（用户这次会话真的打开过的 book 与 page 所在目录）之内的文件，且**先 `realpath` 再判根**——book 里放一条指向 `~/.ssh` 的软链也过不去。请求路径里出现 `..` 一律直接拒，不做「规范化后再放行」。
+
+判定是纯函数（`core/assets`，可单测）；注册与读盘在 app（`services/assets.ts`）。scheme 名改动要同步三处：`registerSchemesAsPrivileged`、renderer 的 CSP `img-src`、`core` 里的常量。**这是全项目唯一的自定义 scheme**；再想加第二个，先回到这一段问「是不是又一次把能力提到了不该有的层」。
 
 **原则**：preload 白名单的任何变更由 CI 守卫比对，白名单膨胀即阻塞。
 

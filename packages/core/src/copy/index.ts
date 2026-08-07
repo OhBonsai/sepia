@@ -76,6 +76,24 @@ export const copy = {
   'conflict.choice.both': '都留着（外部那版另存为新文件）',
   'conflict.preserved': '另一版已备份到 .sepia 的 conflicts 里',
 
+  // Stage 6b：库 UI
+  'library.tree.empty': '这个文件夹里没有 .md —— 换一个文件夹作 book，或用 ⌘O 打开单个文件',
+  'library.tree.degraded': '这个 book 太大了，只列出了顶层——打开子目录里的文件可用 ⌘O',
+  'cmd.library.sidebar': '收起 / 展开侧边栏',
+  'home.choose.book': '选择文件夹作为 book',
+  'home.open.page': '打开一个 .md',
+  'home.recents': '最近',
+
+  // T-31：措辞要说清"没有自动改"——用户点了才动他的文件
+  'links.pending': '别处还有引用指向旧路径，未更新：',
+  'links.list': '看看改哪些',
+  'links.apply': '更新',
+
+  // Stage 6b：多 Tab
+  'cmd.tab.close': '关闭这一页',
+  'cmd.tab.prev': '上一页',
+  'cmd.tab.next': '下一页',
+
   'cmd.file.new': '新建 page',
   'cmd.file.rename': '重命名',
   'cmd.file.move': '移动到…',

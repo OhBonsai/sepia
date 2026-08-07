@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
-import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
+import { EditorView, drawSelection, keymap } from '@codemirror/view'
 
 import type { EditorView as EditorViewType } from '@codemirror/view'
 
@@ -28,6 +28,9 @@ import { applyMarkup, type ApplyMarkupRequest, type ApplyMarkupResult } from './
 // CM6 的主题写 `var(--sepia-*)`，与 @sepia/ui 的变量表**共享名字但不共享代码**——
 // `editor ↮ ui` 是刻意不连线（T-20）。改名字要两边一起改，这是有意的摩擦。
 
+/** 版心宽度（170 §2.1 〇）。一行 30–40 个汉字，是长文里最不累的那一档。 */
+export const MEASURE_PX = 760
+
 const paperTheme = EditorView.theme({
   '&': {
     height: '100%',
@@ -36,16 +39,17 @@ const paperTheme = EditorView.theme({
   },
   '.cm-content': {
     caretColor: 'var(--sepia-caret)',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '15px',
-    lineHeight: '1.7',
+    // **正文栈，不是等宽**（170 §2.1 〇）。等宽字体让每一段都像代码清单；
+    // 而这是一张写字的纸。代码块与行内代码单独保留等宽（见 styles.css 的 syn-code 族）。
+    fontFamily: '-apple-system, "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif',
+    fontSize: '16px',
+    lineHeight: '1.85',
     padding: '24px 0 40vh',
   },
-  '.cm-gutters': {
-    backgroundColor: 'var(--sepia-paper)',
-    color: 'var(--sepia-ink-muted)',
-    border: 'none',
-  },
+  // **版心**：正文栏居中限宽。浮层与 diff 住在文档流里（块级 widget），
+  // 因此自动继承这个宽度——不必各自再约定一次。
+  '.cm-scroller': { justifyContent: 'center' },
+  '.cm-content, .cm-gutters': { maxWidth: `${MEASURE_PX}px`, width: '100%' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--sepia-caret)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--sepia-selection)',
@@ -84,7 +88,9 @@ export function baseExtensions(options: BaseExtensionOptions = {}): Extension[] 
   return [
     // 这一行是不变量 2 的守卫，不是可选项。删了它 CRLF 文件会被静默改成 LF。
     EditorState.lineSeparator.of(options.lineEnding ?? '\n'),
-    lineNumbers(),
+    // **没有 lineNumbers()**（170 §2.1 〇，人裁"气质按原型的纸来"）：
+    // 行号是代码编辑器的家具，它一在左边立着，这就不是一张纸了。
+    // 去掉它顺带把 gutter 整条移出布局——版心因此真的居中，而不是"减去 gutter 之后居中"。
     history(),
     drawSelection(),
     EditorView.lineWrapping,
@@ -153,6 +159,22 @@ export interface MountedEditor {
   showBadges(spots: BadgeSpot[]): void
   /** ⌘⇧H 还白（W10）：全隐 ↔ 全显来回切。返回切换后的「是否全隐」。 */
   toggleBadges(): boolean
+  /**
+   * 某个位置在屏幕上的坐标（视口坐标系）。`@` 的行内浮层靠它贴着光标出现。
+   *
+   * 只给坐标、不给 `EditorView`——**够用的最小面**。给了 view，不变量 3 的
+   * 类型保证当场作废（拿到 view 就能 dispatch，绕过 CAS）。
+   */
+  coordsAt(pos: number): { left: number; top: number; bottom: number } | null
+  /**
+   * 用户发起的区间替换（`@` 引用插入，170 §2.1 ④）。
+   *
+   * **走的是与落笔同一条 CAS 通道**——不是另开一条写路径。理由：
+   * `MountedEditor` 不交出 `EditorView`，是不变量 3 在类型上成立的全部依据；
+   * 一旦为了插一个链接加一个"随便写"的方法，那个依据就没了。
+   * 这里同样只接受 `{range, expectedText, replacement}`，对不上就不写。
+   */
+  replaceGuarded(request: ApplyMarkupRequest): ApplyMarkupResult
 }
 
 /**
@@ -220,6 +242,13 @@ export function mountEditor(options: MountOptions): MountedEditor {
     // 徽章：传全量。徽章是由线程按当前正文**算出来的**，不是增量维护的状态——
     // 算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug。
     showBadges: (spots) => view.dispatch({ effects: setBadges.of(spots) }),
+    coordsAt: (pos) => {
+      const rect = view.coordsAtPos(pos)
+      return rect === null ? null : { left: rect.left, top: rect.top, bottom: rect.bottom }
+    },
+    // 与落笔同一条 CAS 实现；`run` 传空打点器——`@` 插入不是 markup，
+    // 不该往 m0–m5 那条时间轴上写东西（150 纪律 22 的口径不许混）
+    replaceGuarded: (request) => applyMarkup(view, request, { mark: () => undefined }),
     toggleBadges: () => {
       const next = !badgesHidden(view)
       view.dispatch({ effects: setBadgesHidden.of(next) })

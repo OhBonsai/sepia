@@ -50,7 +50,7 @@ test('冷启动 → 可写，全部打点在预算内', async () => {
   await mkdir(join(home, '.sepia'), { recursive: true })
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page, cursor: 3, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: page, cursor: 3, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
 

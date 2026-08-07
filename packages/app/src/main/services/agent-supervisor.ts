@@ -27,6 +27,7 @@ import {
   type BookDirectory,
   type EngineMachineState,
   type EngineStatus,
+  tabPath,
 } from '@sepia/core'
 
 import type { Credentials } from './credentials.ts'
@@ -326,8 +327,12 @@ async function onReady(generation: number, importMs: number, listenMs: number): 
 async function sessionBookDirectory(): Promise<BookDirectory | null> {
   if (state.paths === null) return null
   const session = await loadSession(state.paths)
-  if (!session.page) return null
-  return asBookDirectory(dirname(session.page))
+  // session v2（170 §2.1 ①）：**book 就是 book**，不必再从 page 反推目录。
+  // 没有 book 时退回当前 tab 所在目录——游离 page 也该有个能跑 markup 的工作区。
+  if (session.book !== null) return asBookDirectory(session.book)
+  const current = session.tabs[session.active]
+  if (current === undefined) return null
+  return asBookDirectory(dirname(tabPath(session.book, current.page)))
 }
 
 /**

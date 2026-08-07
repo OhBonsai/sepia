@@ -13,10 +13,16 @@ import {
   type PerfMark,
   type SessionState,
   type Thread,
+  openTab,
+  tabRelative,
+  type RefCandidate,
+  type TreeScan,
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
+import { allowAssetRoot } from '../services/assets.ts'
 import { openBookStore } from '../services/books.ts'
+import { fillTitles, importImage, readRecents, scanBook, touchRecent, updateLinks, type LinkUpdatePlan } from '../services/library.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
 import { createPage, movePage, renamePage, trashPage } from '../services/files.ts'
 import { atomicWrite, readText } from '../services/fsio.ts'
@@ -75,6 +81,9 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     // 环节，忘了调就静默失去监听；而 `file/read` 是 renderer 打开 page 的唯一通道，
     // 事实本来就流经这里。读盘失败就不挂——挂一个不存在的文件没有意义。
     if (result.ok) void watchPage(path)
+    // 同一条事实的第二个用处：**这个 page 所在目录成为图片可读根**。
+    // 与 watchPage 同理，不为它在桥上新开一个 renderer 必须记得调用的环节。
+    if (result.ok) void allowAssetRoot(dirname(path))
     return result
   })
 
@@ -178,6 +187,66 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     },
   )
 
+  // ── library 域（Stage 6b，170 §2.3 申报值）────────────────────────────
+  // 扫描**一次性异步**：它在 t5 之后才被调用，绝不进启动同步路径（纪律 12）。
+  ipcMain.handle('library/scan', async (_event, dir: unknown): Promise<IoResult<TreeScan>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    // book 根也要登记：`sub/x.md` 里写 `../img/y.png` 时，page 所在目录这一个根不够
+    void allowAssetRoot(dir)
+    return { ok: true, value: await scanBook(dir, config.libraryTreeEntryLimit) }
+  })
+
+  ipcMain.handle('library/recents', async (_event, dir: unknown, page: unknown): Promise<IoResult<string[]>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    // 传了 page 就是"打开了它"（置顶+去重+截断）；没传就是纯读
+    if (typeof page === 'string') return touchRecent(paths, dir, page, config.libraryRecentsLimit)
+    return { ok: true, value: await readRecents(paths, dir) }
+  })
+
+  ipcMain.handle('library/titles', async (_event, dir: unknown, items: unknown): Promise<IoResult<RefCandidate[]>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    if (!Array.isArray(items)) return { ok: false, reason: 'items must be an array' }
+    return { ok: true, value: await fillTitles(dir, items as RefCandidate[]) }
+  })
+
+  // 收图（§2.1 ⑤）：**只增不改**，重名加序号绝不覆盖——拖进来的图片是用户的字节。
+  ipcMain.handle(
+    'files/import-image',
+    async (_event, name: unknown, bytes: unknown, book: unknown): Promise<IoResult<string>> => {
+      if (typeof name !== 'string' || typeof book !== 'string' || !isAbsolute(book)) {
+        return { ok: false, reason: 'bad request' }
+      }
+      // 结构化克隆过来的是 Uint8Array（或 ArrayBuffer）——两种都收
+      const data =
+        bytes instanceof Uint8Array
+          ? bytes
+          : bytes instanceof ArrayBuffer
+            ? new Uint8Array(bytes)
+            : null
+      if (data === null || data.byteLength === 0) return { ok: false, reason: 'empty image' }
+      return importImage(name, data, book)
+    },
+  )
+
+  // 更新链接（§2.1 ⑥ / T-31）：**只找不改**，改不改由用户点那一下决定。
+  ipcMain.handle(
+    'files/update-links',
+    async (_event, book: unknown, from: unknown, to: unknown, apply: unknown): Promise<IoResult<LinkUpdatePlan>> => {
+      if (typeof book !== 'string' || !isAbsolute(book) || typeof from !== 'string' || typeof to !== 'string') {
+        return { ok: false, reason: 'bad request' }
+      }
+      return updateLinks(book, from, to, apply === true, config.libraryTreeEntryLimit)
+    },
+  )
+
+  ipcMain.handle('dialog/open-directory', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = window
+      ? await dialog.showOpenDialog(window, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
   ipcMain.handle('session/get', async (): Promise<SessionState> => {
     const session = await loadSession(paths)
     // 三入口（argv / `open-file` / 二次启动转交）的 page 在这里汇入（120 §1.1 问题二）。
@@ -188,8 +257,10 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
     // 而这个 page 可能压根不属于任何 book（游离，T-30）——那条降级由 main 侧判定，
     // renderer 什么都不必知道：纸完全可写，与不变量 1 同构。
     const first = takeNextPendingPath()
-    if (first !== null) return { ...session, page: first, cursor: 0, scrollTop: 0 }
-    return session
+    if (first === null) return session
+    // **开成一个新 tab，而不是替换整个会话**（170 §2.1 ①）：命令行/双击打开一个文件，
+    // 不该把用户上次开着的其它 tab 全关掉。`openTab` 里已经含"已开着就聚焦"的判断。
+    return openTab(session, { page: tabRelative(session.book, first), cursor: 0, scrollTop: 0 })
   })
 
   ipcMain.handle('session/set', async (_event, state: unknown): Promise<void> => {

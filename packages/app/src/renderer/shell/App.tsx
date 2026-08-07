@@ -2,8 +2,15 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
+  EMPTY_SESSION,
+  type RefCandidate,
+  closeTab,
   createAnchor,
   markupReport,
+  openTab,
+  tabPath,
+  tabRelative,
+  updateTab,
   type EngineStatus,
   type MarkupRun,
   type SessionState,
@@ -30,9 +37,12 @@ import { nearbyBlocks } from '../markup/nearby.ts'
 // Stage 2 的 KaTeX 教训原样适用。构建产物里它是独立 chunk，冷启动一个字节都不多。
 const MarkupPanel = lazy(async () => ({ default: (await import('../markup/panel.tsx')).MarkupPanel }))
 import { createAutosave, type Autosave } from '../services/autosave.ts'
+import { FileTree } from '../library/tree.tsx'
+import { Home } from '../library/home.tsx'
+import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
-import { registerCommand } from '../commands/registry.ts'
+import { execute, registerCommand } from '../commands/registry.ts'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
@@ -73,6 +83,29 @@ export function App(): React.JSX.Element {
   const threadStore = useRef<ThreadStore | null>(null)
   const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
   const [panelOpen, setPanelOpen] = useState(false)
+  /** 侧边栏（⌘B）。**可全收起**——收起时纸就是整扇窗（§2.1 ②）。 */
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * `@` 引用（§2.1 ④）。候选表用**文件树扫描的同一份清单**——不为 `@` 再扫一次盘；
+   * 标题后台补，补好之前按纯文件名匹配（**那是常态路径，不是降级**）。
+   */
+  const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
+  const [refState, setRefState] = useState<{
+    from: number
+    query: string
+    anchor: { left: number; top: number; bottom: number } | null
+  } | null>(null)
+  /**
+   * 更新链接（§2.1 ⑥ / T-31）：重命名或移动之后的提示。
+   * **用户主动点，不自动改**——自动改等于在用户没看见的地方动他的字。
+   */
+  const [linkPlan, setLinkPlan] = useState<{
+    from: string
+    to: string
+    files: { page: string; count: number }[]
+    total: number
+    expanded: boolean
+  } | null>(null)
   /** 点徽章进来的那条线程——面板要**定位到它**，不是只把面板打开（W11 两条路都要通）。 */
   const [focusThread, setFocusThread] = useState<string | null>(null)
 
@@ -90,22 +123,34 @@ export function App(): React.JSX.Element {
   const [searchReplace, setSearchReplace] = useState('')
   const [searchCount, setSearchCount] = useState(0)
 
+  // 多 Tab（170 §2.1 ①）：**session 就是 tab 的真相源**，不另建一份 tabs state。
+  // 两份状态一定会漂——而"漂"在这里的表现是"关了一个 tab，另一个的光标跑了"。
+  const [session, setSession] = useState<SessionState>(EMPTY_SESSION)
+  const sessionRef = useRef<SessionState>(EMPTY_SESSION)
+  sessionRef.current = session
+
   // session 的最新值攒在 ref 里，到点一次写完——不随每个事件写盘（附录 D.3 第 2 条）。
   const sessionDraft = useRef({ cursor: 0, scrollTop: 0 })
   const sessionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const schedulePersist = useCallback((path: string): void => {
+  /** 把当前 tab 的光标与滚动并进 session。**切走 / 关闭 / 写盘前都要过这一步**。 */
+  const withCurrentPosition = useCallback((state: SessionState): SessionState => {
+    if (state.tabs.length === 0) return state
+    return updateTab(state, state.active, {
+      cursor: sessionDraft.current.cursor,
+      scrollTop: sessionDraft.current.scrollTop,
+    })
+  }, [])
+
+  const schedulePersist = useCallback((): void => {
     if (sessionTimer.current !== null) clearTimeout(sessionTimer.current)
     sessionTimer.current = setTimeout(() => {
       sessionTimer.current = null
-      void api.setSession({
-        version: 1,
-        page: path,
-        cursor: sessionDraft.current.cursor,
-        scrollTop: sessionDraft.current.scrollTop,
-      })
+      const next = withCurrentPosition(sessionRef.current)
+      sessionRef.current = next
+      void api.setSession(next)
     }, SESSION_DEBOUNCE_MS)
-  }, [])
+  }, [withCurrentPosition])
 
   useEffect(
     () => () => {
@@ -114,12 +159,12 @@ export function App(): React.JSX.Element {
     [],
   )
 
-  const open = useCallback(async (path: string, cursor = 0, scrollTop = 0): Promise<void> => {
+  const open = useCallback(async (path: string, cursor = 0, scrollTop = 0): Promise<boolean> => {
     const read = await api.readFile(path)
     if (!read.ok) {
       setError(t('error.open.failed'))
       setStatus('empty')
-      return
+      return false
     }
     const { fidelity, body } = readFidelity(read.value)
     // t4：page 文件内容到手
@@ -130,6 +175,7 @@ export function App(): React.JSX.Element {
     setDirty(false)
     setError(null)
     setStatus('ready')
+    return true
   }, [])
 
   const save = useCallback(
@@ -188,17 +234,163 @@ export function App(): React.JSX.Element {
     }
   }, [page])
 
+  /**
+   * 打开一个 page：**开成 tab**（已开着就聚焦过去）。
+   * ⌘O / 文件树 / `@` / argv 四个入口全走这一条——"重复打开"的判断只在 `openTab` 里一处。
+   */
+  const openInTab = useCallback(
+    async (absolute: string): Promise<void> => {
+      const current = withCurrentPosition(sessionRef.current)
+      const relative = tabRelative(current.book, absolute)
+      const next = openTab(current, { page: relative, cursor: 0, scrollTop: 0 })
+      const tab = next.tabs[next.active]
+      sessionRef.current = next
+      setSession(next)
+      const opened = await open(absolute, tab?.cursor ?? 0, tab?.scrollTop ?? 0)
+      if (!opened) {
+        // **打不开就把 tab 收回去**（真人轮实测）：留着一个开不出内容的 tab，
+        // 用户看到的是"tab 在、纸是空的、红字挂着"——比什么都没发生更糟。
+        // session 也不写盘，免得把这个坏 tab 带到下次启动。
+        sessionRef.current = current
+        setSession(current)
+        return
+      }
+      void api.setSession(next)
+      // 最近打开（§2.1 ③）：置顶+去重+截断在 core，这里只报"打开了它"。
+      // **放在打开成功之后**——打不开的东西不该进"最近打开"
+      if (next.book !== null) void api.libraryRecents(next.book, relative)
+    },
+    [open, withCurrentPosition],
+  )
+
+  /** 切到第 index 个 tab：**先把当前位置存住**，再把那个 tab 的位置还原回去。 */
+  const switchTab = useCallback(
+    async (index: number): Promise<void> => {
+      const current = withCurrentPosition(sessionRef.current)
+      const target = current.tabs[index]
+      if (target === undefined || index === current.active) return
+      const next = { ...current, active: index }
+      sessionRef.current = next
+      setSession(next)
+      void api.setSession(next)
+      await open(tabPath(next.book, target.page), target.cursor, target.scrollTop)
+    },
+    [open, withCurrentPosition],
+  )
+
+  /** 关掉一个 tab。全关光 → 回主页（不是白屏）。 */
+  const closeTabAt = useCallback(
+    async (index: number): Promise<void> => {
+      const next = closeTab(withCurrentPosition(sessionRef.current), index)
+      sessionRef.current = next
+      setSession(next)
+      void api.setSession(next)
+      const target = next.tabs[next.active]
+      if (target === undefined) {
+        setPage(null)
+        setStatus('empty')
+        return
+      }
+      await open(tabPath(next.book, target.page), target.cursor, target.scrollTop)
+    },
+    [open, withCurrentPosition],
+  )
+
+  /** 选一个文件夹作 book（主页第一条路）。**只改 session.book**，不动 tabs。 */
+  const chooseBook = useCallback((dir: string): void => {
+    const next = { ...withCurrentPosition(sessionRef.current), book: dir }
+    sessionRef.current = next
+    setSession(next)
+    void api.setSession(next)
+  }, [withCurrentPosition])
+
+  /** 重命名/移动之后查一遍引用。**只查不改**，查到了才出横条。 */
+  const checkLinks = useCallback(async (from: string, to: string): Promise<void> => {
+    const book = sessionRef.current.book
+    if (book === null) return
+    const plan = await api.updateLinks(book, from, to, false)
+    if (!plan.ok || plan.value.total === 0) return
+    setLinkPlan({ from, to, files: plan.value.files, total: plan.value.total, expanded: false })
+  }, [])
+
+  /**
+   * 收图（§2.1 ⑤，架构 §4.9 落点表）：编辑区**只收图片**，拖别的一律无效。
+   *
+   * 插入走 `replaceGuarded`（零长度区间 = 纯插入），与 `@` 同一条 CAS 通道——
+   * 仍然没有第二条写正文的路。
+   */
+  const dropImages = useCallback(async (images: File[]): Promise<void> => {
+    const book = sessionRef.current.book
+    const instance = editor.current
+    // 没有 book 就没有 `img/` 可落——游离 page 收图归后话（记债）
+    if (book === null || instance === null || images.length === 0) return
+    for (const file of images) {
+      // **读字节，不读路径**：Electron ≥32 删了 `File.path`，而粘贴的截图
+      // 在磁盘上根本没有文件——字节是这两条路唯一的共同语言
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const imported = await api.importImage(file.name || 'image.png', bytes, book)
+      if (!imported.ok) continue
+      const at = instance.selection().from
+      // **图片必须自成一行**，两个理由缺一不可：
+      //   1. 落在别人行中间会把那行的语义搅了——真人轮实测：光标在 `# 标题` 行首时
+      //      插进去，正文变成 `![](img/…)# 访问控制管理办法`，标题当场废掉
+      //   2. C 类块级 widget 只认独占一行的图片；夹在文字里渲不出预览（130 §C）
+      // 换行用**这一页自己的换行符**，不是硬编码 '\n'——CRLF 文件掺一个 LF
+      // 就是"未触及的字节"之外多出的一处改写（不变量 2 的精神）。
+      const eol = page?.fidelity.lineEnding ?? '\n'
+      const head = at === 0 || instance.slice(at - 1, at) === '\n' ? '' : eol
+      const tailChar = instance.slice(at, at + 1)
+      const tail = tailChar === '' || tailChar === '\n' || tailChar === '\r' ? '' : eol
+      instance.replaceGuarded({
+        range: { from: at, to: at },
+        expectedText: '',
+        replacement: `${head}![](${imported.value})${tail}`,
+      })
+    }
+    draft.current = instance.read()
+    setDirty(true)
+    autosave.current?.bump()
+    // `page` 必须进依赖：其余取值都走 ref，只有换行符来自 state——
+    // 空依赖数组会让它永远停在第一张纸的换行符上
+  }, [page])
+
+  // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
+  useEffect(() => {
+    const book = session.book
+    if (book === null) {
+      setRefCandidates([])
+      return
+    }
+    void (async () => {
+      const scan = await api.scanLibrary(book)
+      if (!scan.ok) return
+      const files = scan.value.entries
+        .filter((entry) => entry.kind === 'file')
+        .map((entry) => ({ path: entry.path, name: entry.name }))
+      setRefCandidates(files) // 先给文件名——`@` 此刻就能用
+      const withTitles = await api.libraryTitles(book, files)
+      if (withTitles.ok) setRefCandidates(withTitles.value) // 标题补好再刷一次
+    })()
+  }, [session.book])
+
   const pick = useCallback(async (): Promise<void> => {
     const chosen = await api.openMarkdown()
-    if (chosen) await open(chosen)
-  }, [open])
+    if (chosen) await openInTab(chosen)
+  }, [openInTab])
 
-  // 启动：读 session → 打开上次的 page。同步路径上只有这一件事（纪律 12）。
+  // 启动：读 session → **恢复 tabs 与 active**（170 §2.1 ①）。
+  // 同步路径上仍然只有这一件事（纪律 12）：文件树、@ 索引都在 t5 之后异步补。
   useEffect(() => {
     void (async () => {
-      const session: SessionState = await api.getSession()
-      if (session.page) await open(session.page, session.cursor, session.scrollTop)
-      else setStatus('empty')
+      const restored: SessionState = await api.getSession()
+      sessionRef.current = restored
+      setSession(restored)
+      const current = restored.tabs[restored.active]
+      if (current === undefined) {
+        setStatus('empty')
+        return
+      }
+      await open(tabPath(restored.book, current.page), current.cursor, current.scrollTop)
     })()
   }, [open])
 
@@ -341,11 +533,36 @@ export function App(): React.JSX.Element {
       run: () => void editor.current?.toggleBadges(),
     })
     registerCommand({
+      id: 'library.sidebar',
+      title: 'cmd.library.sidebar',
+      key: 'Mod-b',
+      run: () => setSidebarOpen((openNow) => !openNow),
+    })
+    // 多 Tab（170 §2.1 ①）。⌘W 关、⌘⇧[ ⌘⇧] 切——与浏览器同一套肌肉记忆
+    registerCommand({
+      id: 'tab.close',
+      title: 'cmd.tab.close',
+      key: 'Mod-w',
+      run: () => void closeTabAt(sessionRef.current.active),
+    })
+    registerCommand({
+      id: 'tab.prev',
+      title: 'cmd.tab.prev',
+      key: 'Mod-Shift-[',
+      run: () => void switchTab(sessionRef.current.active - 1),
+    })
+    registerCommand({
+      id: 'tab.next',
+      title: 'cmd.tab.next',
+      key: 'Mod-Shift-]',
+      run: () => void switchTab(sessionRef.current.active + 1),
+    })
+    registerCommand({
       id: 'threads.panel',
       title: 'cmd.threads.panel',
       run: () => setPanelOpen((isOpen) => !isOpen),
     })
-  }, [save, pick, openSearch, summon])
+  }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -366,6 +583,23 @@ export function App(): React.JSX.Element {
       } else if (event.key === 'k') {
         event.preventDefault()
         summon()
+      } else if (event.key === 'Backspace') {
+        // ⌘⌫ 移到回收站（§2.1 ②：**还 6a 债 A 的入口半**——此前这条命令没绑键，
+        // 人工轮连入口都找不到）。删除没有自绘确认：回收站本身就是撤销通道
+        event.preventDefault()
+        void execute('files.trash')
+      } else if (event.key === 'b') {
+        event.preventDefault()
+        setSidebarOpen((openNow) => !openNow)
+      } else if (event.key === 'w') {
+        event.preventDefault()
+        void closeTabAt(sessionRef.current.active)
+      } else if (event.shiftKey && (event.key === '{' || event.key === '[')) {
+        event.preventDefault()
+        void switchTab(sessionRef.current.active - 1)
+      } else if (event.shiftKey && (event.key === '}' || event.key === ']')) {
+        event.preventDefault()
+        void switchTab(sessionRef.current.active + 1)
       } else if ((event.key === 'h' || event.key === 'H') && event.shiftKey) {
         // ⌘⇧H 还白（W10）
         event.preventDefault()
@@ -374,7 +608,7 @@ export function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [save, pick, openSearch, summon])
+  }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
   useEffect(() => {
     document.title = page ? `${dirty ? '• ' : ''}${page.path.split('/').pop()}` : t('app.name')
@@ -404,6 +638,11 @@ export function App(): React.JSX.Element {
     },
     position: () => ({ cursor: editor.current?.selection().from ?? 0, scrollTop: sessionDraft.current.scrollTop }),
     onOpen: (next) => void open(next),
+    onMoved: (from, to) => {
+      const book = sessionRef.current.book
+      if (book === null) return
+      void checkLinks(tabRelative(book, from), tabRelative(book, to))
+    },
     onGone: () => {
       // 用户自己删掉了当前 page（不是外部删除——那条走 detach，内容留在纸上）
       setPage(null)
@@ -415,6 +654,32 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="sepia-shell" data-sepia-shell={status} data-sepia-markup-report={report ?? undefined}>
+      {session.tabs.length > 0 && (
+        <div className="sepia-tabs" data-sepia-tabs={String(session.tabs.length)}>
+          {session.tabs.map((tab, index) => (
+            <div
+              key={tab.page}
+              className="sepia-tab"
+              data-sepia-tab={tab.page}
+              data-sepia-tab-active={index === session.active ? 'true' : 'false'}
+              onClick={() => void switchTab(index)}
+            >
+              {/* 只有文件名，没有图标——tab 条是一行细字，不是工具栏 */}
+              <span className="sepia-tab-name">{tab.page.split('/').pop()}</span>
+              <span
+                className="sepia-tab-close"
+                data-sepia-tab-close={tab.page}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void closeTabAt(index)
+                }}
+              >
+                ×
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}
@@ -440,8 +705,67 @@ export function App(): React.JSX.Element {
           )}
         </div>
       )}
+      {linkPlan !== null && (
+        <div className="sepia-strip" data-sepia-links={String(linkPlan.total)}>
+          {`${t('links.pending')} ${linkPlan.total}`}
+          <span className="sepia-conflict-choices">
+            <button
+              type="button"
+              data-sepia-links-expand="true"
+              onClick={() => setLinkPlan({ ...linkPlan, expanded: !linkPlan.expanded })}
+            >
+              {t('links.list')}
+            </button>
+            <button
+              type="button"
+              data-sepia-links-apply="true"
+              onClick={() => {
+                const book = sessionRef.current.book
+                if (book === null) return
+                // 用户点了才改。改完与重命名进**同一个 commit**——
+                // 静默 commit 的触发器会把这一批改动一起收走（架构 §4.2 的时间线）
+                void api.updateLinks(book, linkPlan.from, linkPlan.to, true).then(() => setLinkPlan(null))
+              }}
+            >
+              {t('links.apply')}
+            </button>
+          </span>
+          {linkPlan.expanded && (
+            /* **执行前先把清单摊开**：要改谁、改几处，看得见才敢点 */
+            <div className="sepia-links-list" data-sepia-links-list="open">
+              {linkPlan.files.map((file) => (
+                <div key={file.page} data-sepia-links-file={file.page}>
+                  {file.page} · {file.count}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {error !== null && <div className="sepia-error">{error}</div>}
       {saveWarning && <div className="sepia-save-warning" data-sepia-save-warning="on" title={t('error.save.failed')} />}
+      {refState !== null && page !== null && (
+        <RefPicker
+          candidates={refCandidates}
+          query={refState.query}
+          anchor={refState.anchor}
+          onClose={() => setRefState(null)}
+          onPick={(candidate) => {
+            const instance = editor.current
+            if (instance === null) return
+            // **走 CAS 通道**：区间就是刚敲的那个 `@词`，对不上就不写
+            instance.replaceGuarded({
+              range: { from: refState.from, to: refState.from + refState.query.length + 1 },
+              expectedText: `@${refState.query}`,
+              replacement: refLink(candidate),
+            })
+            setRefState(null)
+            draft.current = instance.read()
+            setDirty(true)
+            autosave.current?.bump()
+          }}
+        />
+      )}
       {panelOpen && page !== null && (
         <ThreadPanel
           view={threadView}
@@ -510,13 +834,41 @@ export function App(): React.JSX.Element {
           onClose={closeSearch}
         />
       )}
+      {/* 侧边栏 + 纸：**收起时纸就是整扇窗**（⌘B，§2.1 ②） */}
+      <div className="sepia-body" data-sepia-sidebar={sidebarOpen && session.book !== null ? 'open' : 'closed'}>
+        {sidebarOpen && session.book !== null && (
+          <FileTree
+            book={session.book}
+            current={session.tabs[session.active]?.page ?? null}
+            onOpen={(relative) => void openInTab(tabPath(session.book, relative))}
+          />
+        )}
+        <div
+          className="sepia-paper-area"
+          onDragOver={(event) => event.preventDefault()}
+          onDropCapture={(event) => {
+            // **捕获阶段**：CM6 自己也管 drop/paste，冒泡阶段轮到我们时它可能
+            // 已经 preventDefault 了。图片这条路要抢在它前面（真人轮实测：拖进来毫无反应）
+            const images = [...event.dataTransfer.files].filter((file) => file.type.startsWith('image/'))
+            if (images.length === 0) return // 拖别的一切静默无效（架构 §4.9 落点表）
+            event.preventDefault()
+            event.stopPropagation()
+            void dropImages(images)
+          }}
+          onPasteCapture={(event) => {
+            const images = [...event.clipboardData.files].filter((file) => file.type.startsWith('image/'))
+            if (images.length === 0) return // 粘文本仍走 CM6 自己那条（剪贴板智能转换，T-28）
+            event.preventDefault()
+            event.stopPropagation()
+            void dropImages(images)
+          }}
+        >
       {page === null ? (
-        <div className="sepia-empty">
-          <p>{t('empty.hint')}</p>
-          <button type="button" onClick={() => void pick()}>
-            {t('empty.open')}
-          </button>
-        </div>
+        <Home
+          book={session.book}
+          onOpenBook={chooseBook}
+          onOpenPage={(absolute) => void openInTab(absolute)}
+        />
       ) : (
         <EditorHost
           doc={page.body}
@@ -544,18 +896,38 @@ export function App(): React.JSX.Element {
             // 重算即判孤儿——徽章移出纸面、对话沉进置灰区；⌘⇧Z 自然回来。
             // 没有任何 undo 钩子，锚点机制本身就是它的实现。
             threadStore.current?.refresh(next)
+
+            // `@` 侦测：光标前是不是正在敲一个 `@词`。**纯字符串判断，没有 IO**——
+            // "即时"是结构决定的，不是优化出来的（§2.5 D2 <100ms）。
+            const instance = editor.current
+            if (instance === null) return
+            const at = instance.selection().from
+            const before = next.slice(Math.max(0, at - 40), at)
+            const match = /@([^\s@[\]()]*)$/.exec(before)
+            setRefState(
+              match === null
+                ? null
+                : {
+                    from: at - match[0].length,
+                    query: match[1] ?? '',
+                    // 锚点取那个 `@` 的位置：列表从它下面长出来，跟着光标走
+                    anchor: instance.coordsAt(at - match[0].length),
+                  },
+            )
           }}
           onCursorChange={(cursor) => {
             sessionDraft.current.cursor = cursor
-            schedulePersist(page.path)
+            schedulePersist()
           }}
           onScrollChange={(scrollTop) => {
             sessionDraft.current.scrollTop = scrollTop
-            schedulePersist(page.path)
+            schedulePersist()
           }}
           onReady={() => api.perfMark('t5')}
         />
       )}
+        </div>
+      </div>
     </div>
   )
 }

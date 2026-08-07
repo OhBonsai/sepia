@@ -31,7 +31,7 @@ test('写字→保存→重开：滚动还原、内容落盘、CRLF 逐字节保
   // 光标落在第 150 行行首附近，滚动位置与之大致相配
   const cursor = BODY.indexOf('第 150 行')
   await mkdir(join(home, '.sepia'), { recursive: true })
-  const seedSession = { version: 1, page, cursor, scrollTop: 2400 }
+  const seedSession = { version: 2, book: null, tabs: [{ page, cursor, scrollTop: 2400 }], active: 0 }
   await writeFile(join(home, '.sepia', 'session.json'), JSON.stringify(seedSession), 'utf8')
 
   // ── 第一程：恢复滚动 → 敲字 → 保存 ────────────────────────────────────────

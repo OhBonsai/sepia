@@ -88,7 +88,14 @@
 }
 
 /* ── D 类与代码块 ─────────────────────────────────────────────────────── */
-.cm-md-codeblock { background: var(--sepia-surface); }
+/* 正文改成正文栈之后（170 §2.1 〇），**代码块必须自己把等宽要回来**——
+   它是 D 类的行装饰，字体本来跟着 `.cm-content` 走，不写就变成了正文字体，
+   而代码一旦不等宽，对齐、缩进、表格式输出全部塌掉。 */
+.cm-md-codeblock {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--sepia-surface);
+}
 .cm-md-html {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--sepia-ink-muted);

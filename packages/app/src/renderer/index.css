@@ -14,7 +14,8 @@ body,
 body {
   background: var(--sepia-paper);
   color: var(--sepia-ink);
-  font: 16px/1.6 system-ui, sans-serif;
+  /* 与 `.cm-content` 同一套正文栈（170 §2.1 〇）：纸面与家具不该是两种字 */
+  font: 16px/1.85 -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Segoe UI', sans-serif;
 }
 
 .sepia-shell,
@@ -34,10 +35,26 @@ body {
   color: var(--sepia-ink-muted);
 }
 
-.sepia-error {
-  padding: 8px 16px;
-  color: var(--sepia-danger);
+/* ── 横条族（170 §2.1 〇 第四条）──────────────────────────────────────────
+   错误横幅、冲突横条、Agent 缺席线、三选，此前各写各的 padding 与字号，
+   叠在一起像四个不同的应用。**统一成一个组件族**：同高度、同字号、同色板，
+   只有"说什么"和"什么颜色"不同。
+
+   共同形态：占满宽度的一条细横，12px 字，上下 6px——**它们是提示，不是面板**。
+   谁都不许自己再定字号与内边距；要区分就用颜色（danger / muted）。 */
+.sepia-strip,
+.sepia-error,
+.sepia-conflict-line,
+.sepia-agent-line,
+.sepia-agent-hint {
+  padding: 6px 16px;
+  font-size: 12px;
+  line-height: 1.5;
   border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-error {
+  color: var(--sepia-danger);
 }
 
 /* 纸角持久警示点（架构 §4.2）：写盘失败时亮起，**恢复即消**。
@@ -141,11 +158,10 @@ body {
 
 /* 冲突三选（170 回流 3）：沿用横条形态升级，**不做模态**——模态会打断书写。 */
 .sepia-conflict-choices {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--sepia-rule);
+  margin-left: 8px;
 }
 
 .sepia-conflict-choices button {
@@ -161,10 +177,7 @@ body {
 
 /* W12：Agent 缺席的**细提示线**——一条线的存在感，不弹窗、不占版面。 */
 .sepia-agent-line {
-  padding: 2px 16px;
-  font-size: 12px;
   color: var(--sepia-ink-muted);
-  border-bottom: 1px solid var(--sepia-rule);
 }
 
 /*
@@ -175,11 +188,9 @@ body {
  * 三选（保留我的 / 用外部的 / 看 diff）归 b 期，横条此刻只报事实。
  */
 .sepia-conflict-line {
-  padding: 4px 16px;
-  font-size: 12px;
+  /* 内边距与字号归横条族统一给，这里只留"它长什么颜色" */
   color: var(--sepia-ink);
   background: var(--sepia-surface);
-  border-bottom: 1px solid var(--sepia-rule);
 }
 
 /* ⌘K 的状态文案：短暂出现自行消失（Stage 3 只到状态，浮层归 Stage 4）。 */
@@ -187,11 +198,13 @@ body {
   position: fixed;
   top: 12px;
   left: 50%;
+  z-index: 10;
   transform: translateX(-50%);
-  padding: 4px 12px;
-  font-size: 12px;
   color: var(--sepia-ink-muted);
   background: var(--sepia-paper);
+  /* 浮着的那条要四边都有框（族里给的是 border-bottom），且**要 z-index**：
+     它与警示点同科——fixed、排在编辑器之前，不给 z-index 就会被编辑器的
+     不透明背景盖住（160 §1.9 条目 7/8 的账，本期一并还掉） */
   border: 1px solid var(--sepia-rule);
   pointer-events: none;
 }
@@ -220,7 +233,12 @@ body {
   border: 1px solid var(--sepia-rule);
   border-radius: 4px;
 }
-.sepia-shell { position: relative; }
+.sepia-shell {
+  position: relative;
+  /* 纵向：tab 条 / 横条族在上，body（侧边栏 + 纸）占满其余 */
+  display: flex;
+  flex-direction: column;
+}
 .sepia-search-row { display: flex; gap: 6px; align-items: center; }
 .sepia-search-input {
   width: 200px;
@@ -335,4 +353,146 @@ body {
 [data-sepia-diff='insert'] {
   color: var(--sepia-ink);
   background: var(--sepia-selection);
+}
+
+/* ── Tab 条（170 §2.1 ①）────────────────────────────────────────────────
+   一行细字，不是工具栏：只有文件名与一个关闭点，没有图标、没有拖拽排序。
+   它与横条族同高同字号——纸上方的所有家具应当看起来是同一个东西。 */
+.sepia-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-tab {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.sepia-tab[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  border-bottom-color: var(--sepia-ink);
+}
+
+.sepia-tab-close {
+  color: var(--sepia-ink-muted);
+  opacity: 0;
+}
+
+.sepia-tab:hover .sepia-tab-close {
+  opacity: 1;
+}
+
+/* ── 侧边栏与主页（170 §2.1 ②③）────────────────────────────────────────
+   侧边栏**可全收起**（⌘B）：收起时纸就是整扇窗，没有残留的窄条。
+   主页**也是纸**——同一套字、同一个版心，没有插画、没有卡片网格。 */
+.sepia-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sepia-paper-area {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.sepia-tree {
+  width: 220px;
+  padding: 8px 0;
+  overflow-y: auto;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  border-right: 1px solid var(--sepia-rule);
+}
+
+.sepia-tree-row {
+  padding: 3px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sepia-tree-row:hover { background: var(--sepia-surface); }
+.sepia-tree-row[data-sepia-tree-kind='dir'] { color: var(--sepia-ink); cursor: default; }
+.sepia-tree-row[data-sepia-tree-current='true'] { color: var(--sepia-ink); background: var(--sepia-surface); }
+
+.sepia-tree-notice {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+/* box-sizing：内边距算进版心里。不加的话 max-width:760 + padding:24 = 808，
+   主页就比正文宽出一圈——版心这条约定要在两处都成立才叫约定。 */
+.sepia-home {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.sepia-home-actions { display: flex; gap: 8px; }
+
+.sepia-home button {
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  background: transparent;
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sepia-home-label { font-size: 12px; color: var(--sepia-ink-muted); }
+.sepia-home-recent { padding: 4px 0; font-size: 14px; cursor: pointer; }
+.sepia-home-recent:hover { color: var(--sepia-syn-link); }
+
+/* `@` 引用浮层（170 §2.1 ④）：贴着正文出现的一小列，不是对话框。 */
+/* **位置由内联 style 给**（贴着光标，见 refs.tsx）——这里只管长相。
+   钉在窗口底部中央是错的：那是命令面板的位置，不是行内浮层的位置。 */
+.sepia-refs {
+  position: fixed;
+  z-index: 20;
+  max-height: 40vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-ref {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
+.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
+
+/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
+.sepia-links-list {
+  padding: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
 }

@@ -16,13 +16,15 @@ export interface FilesOptions extends ExternalChangeOptions {
   onOpen: (path: string) => void
   /** 当前 page 被删除后没有东西可打开。 */
   onGone: () => void
+  /** 重命名/移动完成（T-31）：上层据此去查引用。**只告知，不自动改**。 */
+  onMoved?: (from: string, to: string) => void
 }
 
 export function useFiles(options: FilesOptions): ConflictBanner | null {
-  const { onOpen, onGone, ...external } = options
+  const { onOpen, onGone, onMoved, ...external } = options
   const context = useCallback(
-    (): FileCommandContext => ({ page: options.path, onOpen, onGone }),
-    [options.path, onOpen, onGone],
+    (): FileCommandContext => ({ page: options.path, onOpen, onGone, ...(onMoved === undefined ? {} : { onMoved }) }),
+    [options.path, onOpen, onGone, onMoved],
   )
   useFileCommands(context)
   return useExternalChange(external)

@@ -40,7 +40,7 @@ async function launch(): Promise<Harness> {
   await mkdir(join(home, '.sepia'), { recursive: true })
   await writeFile(
     join(home, '.sepia', 'session.json'),
-    JSON.stringify({ version: 1, page: pagePath, cursor: 0, scrollTop: 0 }),
+    JSON.stringify({ version: 2, book: null, tabs: [{ page: pagePath, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
 
