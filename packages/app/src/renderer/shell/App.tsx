@@ -92,6 +92,13 @@ const SESSION_DEBOUNCE_MS = 500
 /** ⌘K 状态文案停留时长。它是提示不是面板——自己消失，不用关。 */
 const K_HINT_MS = 2_500
 
+/** 状态点的 title 文案。显式表，不拼串（纪律 5）。 */
+const ENGINE_DOT: Record<EngineStatus, CopyKey> = {
+  starting: 'status.engine.starting',
+  ready: 'status.engine.ready',
+  absent: 'status.engine.absent',
+}
+
 export function App(): React.JSX.Element {
   const [status, setStatus] = useState<Status>('loading')
   const [page, setPage] = useState<Page | null>(null)
@@ -1056,6 +1063,9 @@ export function App(): React.JSX.Element {
         onCreate={() => void execute('files.new')}
         onStatus={() => void execute('view.status')}
       />
+      {/* F19 状态点（分镜 0）：**角落一枚小点**，启动中灰 → 就绪实心 → 缺席红。
+          它是这个应用里唯一常驻的状态家具——D-30 否掉了底栏，但没否掉这一枚点。 */}
+      <span className="sepia-engine-dot" data-sepia-engine-dot={engine} title={t(ENGINE_DOT[engine])} />
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}

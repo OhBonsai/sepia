@@ -1369,3 +1369,29 @@ body {
 .sepia-split {
   height: 100%;
 }
+
+/* ── P6 · F19 Agent 状态点（分镜 0）───────────────────────────────────
+   **角落一枚小点**：启动中灰、就绪实心、缺席红。D-30 否掉了常驻底栏，
+   但没否掉这一枚点——它是"Agent 在不在"唯一需要常驻的那一个字节的信息。 */
+.sepia-engine-dot {
+  position: fixed;
+  right: 10px;
+  bottom: 26px;
+  z-index: 9;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--sepia-ink-muted);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.sepia-engine-dot[data-sepia-engine-dot='ready'] {
+  background: var(--sepia-ink-muted);
+  opacity: 0.75;
+}
+
+.sepia-engine-dot[data-sepia-engine-dot='absent'] {
+  background: var(--sepia-danger);
+  border-color: var(--sepia-danger);
+  opacity: 0.9;
+}

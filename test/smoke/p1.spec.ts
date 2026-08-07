@@ -88,3 +88,42 @@ test('F5 图表语法写错 → **退回源码 + 一行错**，不崩不空白',
   // 纸没坏：正文还在
   await expect(win.locator('.cm-content')).toContainText('尾巴')
 })
+
+// ── P6 · F19 状态点 ───────────────────────────────────────────────────
+
+test('F19 状态点：角落一枚点，引擎就绪后变实心（分镜 0）', async () => {
+  const { win } = await launch('# 甲\n\n正文。\n')
+  const dot = win.locator('[data-sepia-engine-dot]')
+  await expect(dot, '角落没有状态点').toHaveCount(1)
+
+  // **量真实不透明度与背景**：一个 `display:none` 的点也"存在"
+  const painted = await win.evaluate(() => {
+    const el = document.querySelector('[data-sepia-engine-dot]')
+    if (el === null) return null
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+    return { opacity: Number(style.opacity), w: Math.round(rect.width), h: Math.round(rect.height) }
+  })
+  expect(painted!.opacity, '状态点是透明的').toBeGreaterThan(0.2)
+  expect(painted!.w, '状态点没有尺寸').toBeGreaterThan(2)
+
+  // **点要跟着引擎状态走**，但"引擎能不能起来"不是这条检查的事
+  //（那是 engine-absent.spec 的活，且真引擎启动在批量跑时会互相抢）。
+  // 这里只断言它到达**终态**——ready 或 absent，都说明这枚点接上了状态源。
+  await expect
+    .poll(async () => win.locator('[data-sepia-engine-dot]').getAttribute('data-sepia-engine-dot'), {
+      timeout: 60_000,
+      intervals: [500],
+    })
+    .toMatch(/^(ready|absent)$/)
+})
+
+test('F23 看板**没有搜索框了**（人裁 2026-08-07）', async () => {
+  const { win } = await launch('# 甲\n\n正文。\n')
+  await win.locator('.cm-content').click()
+  await win.keyboard.press('Meta+/')
+  await expect(win.locator('[data-sepia-keys="open"]')).toBeVisible()
+  await expect(win.locator('[data-sepia-keys-search]'), '搜索框还在——人裁要求拆掉').toHaveCount(0)
+  // 一屏放下与只读两条约束不变
+  await expect(win.locator('.sepia-keys-row').first()).toBeVisible()
+})

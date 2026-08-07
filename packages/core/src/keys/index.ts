@@ -5,6 +5,10 @@
 //
 // 放在 core 而不是 app：全是纯函数，能被单测直接盯住，而"一屏放不放得下"这类
 // 判定必须在真窗口里量（smoke 的活）。两层各管各的。
+//
+// **这里没有搜索**：D-32 ④ 原本要"搜索即过滤"，人裁 2026-08-07 移除
+//（「快捷键不需要搜索功能」）。`matchKeys` 连同它的 5 条单测一并拆掉了——
+// 留一个没人调用的导出就是下一个"亮了四个 stage 没人接"。
 
 /** 五组分类（D-32 ②）。顺序即看板里的呈现顺序。 */
 export const KEY_GROUPS = ['inline', 'block', 'agent', 'file', 'trigger'] as const
@@ -48,29 +52,6 @@ export function keyCaps(spec: string, platform: 'mac' | 'other' = 'mac'): string
     Backspace: '⌫',
   }
   return spec.split('-').map((part) => symbols[part] ?? (part.length === 1 ? part.toUpperCase() : part))
-}
-
-/**
- * 搜索过滤（D-32 ④）：**打「加粗」或「B」都命中**。
- *
- * 返回的是**命中的 id 集合**而不是过滤后的数组——因为约束是「只隐藏不重排」：
- * 看板必须原地把没命中的藏掉，位置一个都不动。返回数组的话调用方几乎必然
- * 会拿它重新渲染一遍，顺序就变了。**类型上就不给它重排的机会。**
- */
-export function matchKeys(entries: KeyEntry[], query: string): Set<string> {
-  const q = query.trim().toLowerCase()
-  if (q === '') return new Set(entries.map((entry) => entry.id))
-  const hit = new Set<string>()
-  for (const entry of entries) {
-    if (entry.label.toLowerCase().includes(q)) {
-      hit.add(entry.id)
-      continue
-    }
-    // 键位那一侧：`b` 要能命中 `⌘B`，`⌘b` 也要能。把键帽拼起来一起比。
-    const caps = entry.spec === undefined ? '' : keyCaps(entry.spec).join('').toLowerCase()
-    if (caps !== '' && caps.includes(q)) hit.add(entry.id)
-  }
-  return hit
 }
 
 /** 按组分桶，组内保持传入顺序。空组不返回——看板里不留空标题。 */

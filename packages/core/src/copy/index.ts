@@ -52,7 +52,6 @@ export const copy = {
 
   // ⌘/ 快捷键看板（D-32 / F23）。**只读看板，不是命令面板**。
   'keys.title': '快捷键',
-  'keys.search': '搜快捷键…',
   'keys.group.inline': '行内格式',
   'keys.group.block': '块',
   'keys.group.agent': 'Agent',
