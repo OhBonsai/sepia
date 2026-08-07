@@ -98,6 +98,16 @@ export function App(): React.JSX.Element {
     hash: null,
     failed: false,
   })
+  /**
+   * 编辑器实例的世代号。**每挂上一个新实例就 +1。**
+   *
+   * 为什么需要它：editor 是 `useRef`，而 ref 的赋值**不会触发重渲染**，effect 也就
+   * 看不见"实例到位了"这件事。而 markdown 层是动态 import 的，实例到位比父组件的
+   * effect 晚得多——于是开机那一次 `editor.current?.showBadges(...)` 恒为 no-op，
+   * 打开一篇有痕迹的 page 看不到任何徽章，要随便敲个字才冒出来。
+   * happy-path 串联实测抓到的两处之一。
+   */
+  const [editorEpoch, setEditorEpoch] = useState(0)
   const [keysOpen, setKeysOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   /** 拦截关闭的确认框（架构 §4.9 的**唯一例外**）。null = 没在拦。 */
@@ -282,6 +292,17 @@ export function App(): React.JSX.Element {
     }
   }, [page, save])
 
+  /**
+   * 画徽章。**是状态的函数，不是重算时的副作用。**
+   *
+   * 传全量（算一次画一次），比"哪条加了哪条删了"少一整类会漂的 bug；
+   * 而挂在 effect 上又比挂在 `onChange` 里多守一条：**编辑器换了一个实例**
+   * （换 page、重开）时它会自己重画，不依赖"恰好那一刻实例已经在了"。
+   */
+  useEffect(() => {
+    editor.current?.showBadges(threadView.badges.map((it) => ({ id: it.thread.id, to: it.range?.to ?? 0 })))
+  }, [threadView, editorEpoch])
+
   // 线程仓：随 page 建、随 page 拆。**四个重算入口共用一个算法**——
   // 打开、正文变、外部变更、新增，都是"按当前正文重算一遍去向"。
   useEffect(() => {
@@ -289,11 +310,11 @@ export function App(): React.JSX.Element {
     const directory = page.path.slice(0, page.path.lastIndexOf('/'))
     const store = createThreadStore({
       directory,
-      onChange: (view) => {
-        setThreadView(view)
-        // 徽章传全量：算一次画一次，比"哪条加了哪条删了"少一整类会漂的 bug
-        editor.current?.showBadges(view.badges.map((it) => ({ id: it.thread.id, to: it.range?.to ?? 0 })))
-      },
+      // **只存状态，不在这儿画**。画法见下面那个 effect——
+      // 原来是在这里直接 `editor.current?.showBadges(...)`，而开机那一次重算
+      // **发生在编辑器挂上之前**，`?.` 把这一下静静吞掉了：打开一篇有痕迹的 page，
+      // 徽章要等你随便敲一个字才冒出来。happy-path 串联实测抓到的。
+      onChange: setThreadView,
     })
     threadStore.current = store
     store.refreshNow(page.body)
@@ -1090,6 +1111,9 @@ export function App(): React.JSX.Element {
           }}
           onEditorReady={(instance) => {
             editor.current = instance
+            // **编辑器是异步挂上的**（markdown 层走动态 import），所以"实例到位"
+            // 本身是一个会迟到的事件，必须能被 effect 观察到——见画徽章那个 effect。
+            setEditorEpoch((epoch) => epoch + 1)
           }}
           onBadgeClick={(id) => {
             // W11：点徽章与开面板是同一个面板的两条入口。点进来的这条要**直接展开**，
