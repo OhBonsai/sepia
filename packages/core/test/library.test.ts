@@ -48,28 +48,60 @@ describe('`@` 匹配（只搜文件名 + 标题）', () => {
     { path: 'arch.md', name: 'arch.md', title: '架构总览' },
     { path: 'notes/plan.md', name: 'plan.md', title: '实施计划' },
     { path: 'notes/archive.md', name: 'archive.md' },
+    // **名字是故意挑的**：查 `plan` 时它是子串命中，而字母序又排在 `plan.md` 前面。
+    // 少了它，"前缀优先"就无法与"字母序兜底"区分开——见下面那条注释。
+    { path: 'notes/a-plan.md', name: 'a-plan.md' },
+    // 同上的道理，换到**标题**这一侧：`架构` 在它的标题里是子串不是前缀，
+    // 而字母序又排在 `arch.md` 前面。
+    { path: 'notes/a-old.md', name: 'a-old.md', title: '旧版架构说明' },
   ]
 
   it('前缀命中排在子串命中之前', () => {
     expect(matchRefs(candidates, 'arch').map((candidate) => candidate.name)).toEqual(['arch.md', 'archive.md'])
   })
 
+  it('**前缀优先，即使字母序相反**——这条才真正咬住"前缀优先"', () => {
+    // 收尾补做反向验证时抓到的空转：原来只有上面那条 `arch`，而
+    // `['arch.md', 'archive.md']` **恰好也是字母序**——把前缀分支整个删掉，
+    // 两者一起掉到"子串 70 分"，再按 localeCompare 兜底，顺序**一模一样**，检查照绿。
+    // 这里让两种排法给出相反答案，前缀分支一断就必红。
+    expect(matchRefs(candidates, 'plan').map((candidate) => candidate.name)).toEqual([
+      'plan.md',
+      'a-plan.md',
+    ])
+  })
+
   it('标题也能命中（人裁 4：文件名 + 标题，就这两样）', () => {
-    expect(matchRefs(candidates, '架构').map((candidate) => candidate.name)).toEqual(['arch.md'])
+    expect(matchRefs(candidates, '架构').map((candidate) => candidate.name)).toContain('arch.md')
+  })
+
+  it('**标题前缀也优先于标题子串**——与文件名那一侧同样的空转，收尾时一并抓到', () => {
+    expect(matchRefs(candidates, '架构').map((candidate) => candidate.name)).toEqual([
+      'arch.md',
+      'a-old.md',
+    ])
   })
 
   it('**标题没建好时仍然即时可用**——索引是后台补的，`@` 不能等它', () => {
     const noTitles = candidates.map(({ path, name }) => ({ path, name }))
-    expect(matchRefs(noTitles, 'plan').map((candidate) => candidate.name), '纯文件名路径必须照常匹配').toEqual(['plan.md'])
+    expect(
+      matchRefs(noTitles, 'plan').map((candidate) => candidate.name),
+      '纯文件名路径必须照常匹配',
+    ).toEqual(['plan.md', 'a-plan.md'])
   })
 
-  it('模糊（字符按序）也能捞到，但排在精确之后', () => {
-    const result = matchRefs(candidates, 'ahv').map((candidate) => candidate.name)
+  it('模糊（字符按序）也能捞到，**且真的排在精确之后**', () => {
+    // 原来这条只 `toContain`，描述里的"排在精确之后"一个字都没断言——
+    // 正是 002 §6.2 第三条元规则说的"描述与断言对不上"。
+    const result = matchRefs([...candidates, { path: 'ahv.md', name: 'ahv.md' }], 'ahv').map(
+      (candidate) => candidate.name,
+    )
+    expect(result[0], '精确命中没排在第一').toBe('ahv.md')
     expect(result).toContain('archive.md')
   })
 
   it('空 query 给全部（刚敲下 @ 的那一刻要先有东西看）', () => {
-    expect(matchRefs(candidates, '')).toHaveLength(3)
+    expect(matchRefs(candidates, '')).toHaveLength(5)
   })
 
   it('完全不匹配就是空，不硬凑', () => {

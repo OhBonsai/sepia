@@ -7,6 +7,8 @@ import {
   openTab,
   parseSession,
   serializeSession,
+  tabPath,
+  tabRelative,
   updateTab,
   withoutPage,
 } from '../src/config/session.ts'
@@ -121,5 +123,35 @@ describe('tab 操作', () => {
     const next = withoutPage(base, 'note.md')
     expect(next.tabs.map((tab) => tab.page)).toEqual(['b.md'])
     expect(withoutPage(base, '不存在.md'), '没这个 page 就什么都不动').toEqual(base)
+  })
+})
+
+// **收尾补做反向验证时补的一整块**：`tabPath` / `tabRelative` 原本**一条单测都没有**，
+// 而真人轮"点最近打不开"正是它。破坏证据：把绝对路径直通那一行删掉，
+// 21 条 session 单测**全绿**——真正拦住它的只有 smoke #8b。
+// 单测这一层缺口不补，下一个手拼路径的地方还会犯同样的错。
+describe('tab 路径两形态（book 内相对、游离绝对）', () => {
+  it('book 内的相对路径接在 book 后面', () => {
+    expect(tabPath('/Users/wp/book', 'a.md')).toBe('/Users/wp/book/a.md')
+    expect(tabPath('/Users/wp/book/', 'sub/c.md')).toBe('/Users/wp/book/sub/c.md')
+  })
+
+  it('**游离 page 存的是绝对路径，必须原样直通**——接在 book 后面会拼出不存在的路径', () => {
+    expect(tabPath('/Users/wp/book', '/tmp/loose.md')).toBe('/tmp/loose.md')
+    expect(tabPath(null, '/tmp/loose.md')).toBe('/tmp/loose.md')
+  })
+
+  it('没有 book 时相对路径原样交出去（调用方自己决定怎么解）', () => {
+    expect(tabPath(null, 'a.md')).toBe('a.md')
+  })
+
+  it('往返：book 内的绝对路径换算回相对，book 外的保持绝对', () => {
+    expect(tabRelative('/Users/wp/book', '/Users/wp/book/sub/c.md')).toBe('sub/c.md')
+    expect(tabRelative('/Users/wp/book', '/tmp/loose.md')).toBe('/tmp/loose.md')
+    expect(tabPath('/Users/wp/book', tabRelative('/Users/wp/book', '/tmp/loose.md'))).toBe('/tmp/loose.md')
+  })
+
+  it('**同前缀的兄弟目录不算 book 内**——`/book-old/x.md` 不能被切成 `x.md`', () => {
+    expect(tabRelative('/Users/wp/book', '/Users/wp/book-old/x.md')).toBe('/Users/wp/book-old/x.md')
   })
 })
