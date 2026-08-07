@@ -50,6 +50,8 @@ export interface AppConfig {
   libraryTreeEntryLimit: number
   /** 最近打开的保留条数。 */
   libraryRecentsLimit: number
+  /** 图片落点目录（D-40：默认 `assets/`，可配置）。 */
+  imageDirectory: string
   /** 文件监听（Stage 6a）。只放真读的字段——见架构 §4.5 那句「不是建设清单」。 */
   watcher: {
     /**

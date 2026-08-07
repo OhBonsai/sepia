@@ -6,6 +6,7 @@ import {
   type RefCandidate,
   closeTab,
   createAnchor,
+  referencedPages,
   markupReport,
   openTab,
   tabPath,
@@ -48,10 +49,13 @@ import { Home } from '../library/home.tsx'
 import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
+import type { ContextBlock } from '@sepia/agent/tasks'
+
 import { entries as commandEntries, execute, registerCommand } from '../commands/registry.ts'
 import { useFileCommands } from '../files/commands.ts'
 import { Cheatsheet } from './cheatsheet.tsx'
 import { InfoOverlay } from './info.tsx'
+import { SlashMenu, type SlashItem } from '../editor/slash.tsx'
 import { PaperTop } from './papertop.tsx'
 import { StatusOverlay } from './status.tsx'
 import { Rightbar } from './rightbar.tsx'
@@ -147,7 +151,24 @@ export function App(): React.JSX.Element {
    * 标题后台补，补好之前按纯文件名匹配（**那是常态路径，不是降级**）。
    */
   const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
+  /**
+   * 正文里引用到的旧文内容（185 缺口 #4 / C4，分镜 9「这次 markup 的对话可带该文做
+   * context」）。组装器从 Stage 4 起就认 `at-content` 块，**缺的一直是喂进去这一环**。
+   *
+   * 上限三篇：预算截断在组装器里本来就有，但读盘发生在它之前——
+   * 一篇正文引了二十篇旧文时，读那二十个文件的代价是白付的。
+   */
+  const [refContents, setRefContents] = useState<ContextBlock[]>([])
   const [refState, setRefState] = useState<{
+    from: number
+    query: string
+    anchor: { left: number; top: number; bottom: number } | null
+  } | null>(null)
+  /**
+   * `/` 组件菜单（F4）。**只在空行触发**——正文里写 `and/or` 不该弹菜单出来。
+   * 形态与 `@` 共用：贴光标、↑↓ 选、Enter 插、Esc 关。
+   */
+  const [slashState, setSlashState] = useState<{
     from: number
     query: string
     anchor: { left: number; top: number; bottom: number } | null
@@ -475,6 +496,38 @@ export function App(): React.JSX.Element {
     // `page` 必须进依赖：其余取值都走 ref，只有换行符来自 state——
     // 空依赖数组会让它永远停在第一张纸的换行符上
   }, [page])
+
+  /**
+   * 把正文里引用到的 page 读进来，备作 `@content`。
+   * 随正文变（防抖跟着 threadStore 那一拍走），**不进启动同步路径**（纪律 12）。
+   */
+  useEffect(() => {
+    const book = session.book
+    if (page === null || book === null) {
+      setRefContents([])
+      return undefined
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void (async () => {
+        const targets = referencedPages(page.body).slice(0, 3)
+        const blocks: ContextBlock[] = []
+        for (const [index, target] of targets.entries()) {
+          const read = await api.readFile(tabPath(book, target))
+          if (read.ok) {
+            // distance 从 10 起：**永远排在选区与邻近段落之后**——
+            // 引用的旧文是佐料，不该把正文自己的上下文挤出预算
+            blocks.push({ kind: 'at-content', text: read.value, distance: 10 + index })
+          }
+        }
+        if (!cancelled) setRefContents(blocks)
+      })()
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [page, session.book])
 
   // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
   useEffect(() => {
@@ -1089,6 +1142,30 @@ export function App(): React.JSX.Element {
           onClose={() => setInfoOpen(false)}
         />
       )}
+      {slashState !== null && page !== null && (
+        <SlashMenu
+          query={slashState.query}
+          anchor={slashState.anchor}
+          onClose={() => setSlashState(null)}
+          onPick={(item: SlashItem) => {
+            const instance = editor.current
+            if (instance === null) return
+            const caret = item.insert.indexOf('|')
+            const text = item.insert.replace('|', '')
+            // **走 CAS 通道**：区间就是刚敲的那个 `/词`，对不上就不写
+            instance.replaceGuarded({
+              range: { from: slashState.from, to: slashState.from + slashState.query.length + 1 },
+              expectedText: `/${slashState.query}`,
+              replacement: text,
+            })
+            setSlashState(null)
+            draft.current = instance.read()
+            setDirty(true)
+            autosave.current?.bump()
+            void caret
+          }}
+        />
+      )}
       {refState !== null && page !== null && (
         <RefPicker
           candidates={refCandidates}
@@ -1122,7 +1199,10 @@ export function App(): React.JSX.Element {
               selectionKind="text"
               request={{
                 selection: markup.snapshot,
-                nearby: nearbyBlocks(draft.current, markup.range, markupConfig().contextScope),
+                nearby: [
+                  ...nearbyBlocks(draft.current, markup.range, markupConfig().contextScope),
+                  ...refContents,
+                ],
                 directory: page.path.slice(0, page.path.lastIndexOf('/')),
                 budgetTokens: markupConfig().contextBudgetTokens,
               }}
@@ -1250,6 +1330,20 @@ export function App(): React.JSX.Element {
             if (instance === null) return
             const at = instance.selection().from
             const before = next.slice(Math.max(0, at - 40), at)
+            // `/` 侦测：**行首那个斜杠才算**（空行触发，F4）
+            const lineStart = next.lastIndexOf('\n', Math.max(0, at - 1)) + 1
+            const lineBefore = next.slice(lineStart, at)
+            const slash = /^\/([^\s/]*)$/.exec(lineBefore)
+            setSlashState(
+              slash === null
+                ? null
+                : {
+                    from: lineStart,
+                    query: slash[1] ?? '',
+                    anchor: instance.coordsAt(lineStart),
+                  },
+            )
+
             const match = /@([^\s@[\]()]*)$/.exec(before)
             setRefState(
               match === null

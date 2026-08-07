@@ -917,3 +917,49 @@ body {
 .sepia-status-dot[data-sepia-status-engine='absent'] {
   background: var(--sepia-danger);
 }
+
+/* ── P1 · `/` 组件菜单（F4）与 markup 模型下拉 ───────────────────────
+   `/` 菜单与 `@` 选择器共用同一套形态：贴光标、↑↓ 选、Enter 插——
+   在用户眼里它们是同一件事（行内敲个符号，弹一列东西）。 */
+.sepia-slash {
+  position: fixed;
+  z-index: 30;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-slash-item {
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.sepia-slash-item[data-sepia-slash-active='true'] {
+  background: var(--sepia-surface);
+}
+
+.sepia-markup-model {
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+/* mermaid 真渲染（F5）。失败时退回源码 + 一行错——图表语法写错是常事，
+   崩掉或静静空白都比"告诉你哪儿错了"糟。 */
+.sepia-textdiagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.sepia-textdiagram-error {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--sepia-danger);
+}

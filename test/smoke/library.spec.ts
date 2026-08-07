@@ -255,7 +255,7 @@ async function fireImageEvent(win: Page, kind: 'paste' | 'drop', name: string): 
   )
 }
 
-test('#10 **粘贴**一张图 → 落 img/ + 插 `![]()`，原字节只增不改', async () => {
+test('#10 **粘贴**一张图 → 落 assets/ + 插 `![]()`，原字节只增不改', async () => {
   const fixture = await makeBook()
   const win = await launch(fixture, {
     version: 2,
@@ -269,18 +269,18 @@ test('#10 **粘贴**一张图 → 落 img/ + 插 `![]()`，原字节只增不改
 
   await fireImageEvent(win, 'paste', 'shot.png')
 
-  // 一：正文里插了 `![](img/…)`
+  // 一：正文里插了 `![](assets/…)`
   await expect
     .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
       timeout: 10_000,
     })
-    .toMatch(/!\[]\(img\/\d{10}-shot\.png\)/)
+    .toMatch(/!\[]\(assets\/\d{10}-shot\.png\)/)
 
   // 二：图**真的落在盘上**，且字节原样（1x1 PNG 的头四字节）
   const { readdir } = await import('node:fs/promises')
-  const names = await readdir(join(fixture.book, 'img'))
-  expect(names, 'img/ 里没东西——收图那条路没走通').toHaveLength(1)
-  const bytes = await readFile(join(fixture.book, 'img', names[0]!))
+  const names = await readdir(join(fixture.book, 'assets'))
+  expect(names, 'assets/ 里没东西——收图那条路没走通').toHaveLength(1)
+  const bytes = await readFile(join(fixture.book, 'assets', names[0]!))
   expect([...bytes.subarray(0, 4)], '落盘的不是 PNG 字节').toEqual([0x89, 0x50, 0x4e, 0x47])
 })
 
@@ -301,9 +301,9 @@ test('#10b **拖拽**一张图 → 同一条路（Electron 43 上 File.path 已�
     .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
       timeout: 10_000,
     })
-    .toContain('](img/')
+    .toContain('](assets/')
   const { readdir } = await import('node:fs/promises')
-  expect(await readdir(join(fixture.book, 'img'))).toHaveLength(1)
+  expect(await readdir(join(fixture.book, 'assets'))).toHaveLength(1)
 })
 
 test('#10c 拖别的一切**静默无效**：正文一个字节不变，img/ 不冒出来', async () => {
@@ -328,7 +328,7 @@ test('#10c 拖别的一切**静默无效**：正文一个字节不变，img/ 不
 
   expect(await readFile(join(fixture.book, 'a.md'), 'utf8')).toBe(before)
   const { readdir } = await import('node:fs/promises')
-  expect(await readdir(fixture.book).then((n) => n.includes('img'))).toBe(false)
+  expect(await readdir(fixture.book).then((n) => n.includes('assets'))).toBe(false)
 })
 
 test('#5 更新链接：只查不改 → 用户点了才改，且只改指向旧路径的', async () => {
@@ -442,7 +442,7 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
 
   await expect.poll(async () => readFile(join(fixture.book, 'a.md'), 'utf8').catch(() => ''), {
     timeout: 10_000,
-  }).toContain('](img/')
+  }).toContain('](assets/')
   // 真人轮的事故形态：`![](img/…)# 访问控制管理办法` —— 标题当场废掉
   const text = await win.evaluate(
     () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
@@ -463,7 +463,7 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
   await win.keyboard.press('Meta+ArrowRight')
   await fireImageEvent(win, 'paste', 'second.png')
   await expect.poll(async () => {
-    const names = await (await import('node:fs/promises')).readdir(join(fixture.book, 'img'))
+    const names = await (await import('node:fs/promises')).readdir(join(fixture.book, 'assets'))
     return names.length
   }, { timeout: 10_000 }).toBe(2)
   const after = await win.evaluate(
@@ -476,6 +476,9 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
 
 test('#10e 图片预览**真的画出了像素**（不是只挂了个 <img> 标签）', async () => {
   const fixture = await makeBook()
+  // **故意仍用 `img/`**：写入侧的默认值已按 D-40 改成 `assets/`，
+  // 而 D-40 的实现约束是「读取侧一律按 md 里的实际相对路径解析」——
+  // 换默认值不许让既有的 `img/` 旧图失效。这条 fixture 就是那句话的实证。
   await mkdir(join(fixture.book, 'img'), { recursive: true })
   // 一张 2x2 的真 PNG——尺寸小但**非零**，这正是要断言的东西
   await writeFile(

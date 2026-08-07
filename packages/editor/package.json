@@ -25,6 +25,7 @@
     "@lezer/markdown": "catalog:",
     "@sepia/core": "workspace:*",
     "katex": "catalog:",
+    "mermaid": "catalog:",
     "marked": "catalog:",
     "turndown": "catalog:"
   },

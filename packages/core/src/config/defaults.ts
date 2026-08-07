@@ -24,6 +24,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   watcher: { usePolling: false },
   libraryTreeEntryLimit: 500,
   libraryRecentsLimit: 20,
+  imageDirectory: 'assets',
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
@@ -72,6 +73,7 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'anchorFuzzyThreshold',
     'libraryTreeEntryLimit',
     'libraryRecentsLimit',
+    'imageDirectory',
     'watcher',
   ])
   const preserved: Record<string, unknown> = {}
@@ -100,6 +102,10 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
       anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
       libraryTreeEntryLimit: positiveInt(raw['libraryTreeEntryLimit'], DEFAULT_CONFIG.libraryTreeEntryLimit),
       libraryRecentsLimit: positiveInt(raw['libraryRecentsLimit'], DEFAULT_CONFIG.libraryRecentsLimit),
+      imageDirectory:
+        typeof raw['imageDirectory'] === 'string' && raw['imageDirectory'].trim() !== ''
+          ? raw['imageDirectory'].trim()
+          : DEFAULT_CONFIG.imageDirectory,
       watcher: { usePolling: isRecord(watcher) && watcher['usePolling'] === true },
     },
     unknown: preserved,
@@ -128,6 +134,9 @@ export function configToDisk(
   }
   if (config.libraryTreeEntryLimit !== DEFAULT_CONFIG.libraryTreeEntryLimit) {
     out['libraryTreeEntryLimit'] = config.libraryTreeEntryLimit
+  }
+  if (config.imageDirectory !== DEFAULT_CONFIG.imageDirectory) {
+    out['imageDirectory'] = config.imageDirectory
   }
   if (config.libraryRecentsLimit !== DEFAULT_CONFIG.libraryRecentsLimit) {
     out['libraryRecentsLimit'] = config.libraryRecentsLimit

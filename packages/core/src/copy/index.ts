@@ -50,6 +50,9 @@ export const copy = {
   'cmd.status.panel': '状态浮层',
 
   // F2 标准快捷键集（D-26）
+  'markup.model.retry': '换个模型重试…',
+  'slash.textdiagram': '图表（textdiagram）',
+  'slash.image': '图片',
   'cmd.format.bold': '加粗',
   'cmd.format.italic': '斜体',
   'cmd.format.code': '行内代码',

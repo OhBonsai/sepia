@@ -224,7 +224,7 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
             ? new Uint8Array(bytes)
             : null
       if (data === null || data.byteLength === 0) return { ok: false, reason: 'empty image' }
-      return importImage(name, data, book)
+      return importImage(name, data, book, config.imageDirectory)
     },
   )
 
