@@ -1395,3 +1395,57 @@ body {
   border-color: var(--sepia-danger);
   opacity: 0.9;
 }
+
+/* ── P7 · 纸是一张卡片（原型逐屏对照）───────────────────────────────────
+   原型里纸**浮在一层更深的底上**，四周留白、4px 圆角；不是满幅铺开。
+   这是**布局与结构**（P7 对的正是它），不是配色——底色仍走 --sepia-* 那套，
+   圆角 4px、**无阴影**（Stage 2 已裁的 opencode 式克制）。 */
+.sepia-body {
+  background: var(--sepia-surface);
+}
+
+.sepia-paper-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 10px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* 右栏也是一张卡片，与纸并排——中缝因此是两张卡之间的那道空隙 */
+.sepia-rightbar {
+  margin: 10px 10px 10px 0;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* 树在卡片之外——它属于"窗口"，不属于"纸" */
+.sepia-tree {
+  background: none;
+}
+
+/* 设置页：**一个三级分组 = 一张卡片**，行与行之间是细线，
+   不是每行各自一张卡（原型 W19 的排布）。 */
+.sepia-set-section > .sepia-set-row {
+  margin-bottom: 0;
+  border-radius: 0;
+}
+
+.sepia-set-section > .sepia-set-row + .sepia-set-row {
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-section > .sepia-set-row:first-of-type {
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.sepia-set-section > .sepia-set-row:last-child {
+  margin-bottom: 14px;
+  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
