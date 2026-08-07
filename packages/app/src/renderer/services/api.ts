@@ -25,6 +25,10 @@ interface Bridge {
   }
   dialog: { openMarkdown(): Promise<string | null>; openDirectory(): Promise<string | null> }
   config: { get(): Promise<IoResult<AppConfig>>; set(patch: Partial<AppConfig>): Promise<IoResult<AppConfig>> }
+  reader: {
+    read(url: string): Promise<IoResult<{ title: string; body: string; url: string }>>
+    openSystem(url: string): Promise<IoResult<void>>
+  }
   workspaces: {
     list(): Promise<IoResult<Workspace[]>>
     add(dir: string): Promise<IoResult<Workspace[]>>
@@ -69,6 +73,8 @@ export const api = {
     bridge.file.write(path, content, options),
   openMarkdown: () => bridge.dialog.openMarkdown(),
   openDirectory: () => bridge.dialog.openDirectory(),
+  readExternal: (url: string) => bridge.reader.read(url),
+  openExternal: (url: string) => bridge.reader.openSystem(url),
   config: {
     get: () => bridge.config.get(),
     set: (patch: Partial<AppConfig>) => bridge.config.set(patch),

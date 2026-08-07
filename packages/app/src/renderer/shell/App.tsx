@@ -8,6 +8,7 @@ import {
   DEFAULT_CONFIG,
   createAnchor,
   keyCaps,
+  setMetaField,
   referencedPages,
   markupReport,
   openTab,
@@ -59,6 +60,10 @@ import { useFileCommands } from '../files/commands.ts'
 import { Cheatsheet } from './cheatsheet.tsx'
 import { InfoOverlay } from './info.tsx'
 import { SlashMenu, type SlashItem } from '../editor/slash.tsx'
+import { SplitEditor } from '../editor/split.tsx'
+import { LinksPanel } from '../library/links.tsx'
+import { Reader } from '../library/reader.tsx'
+import { MetaTable } from './meta.tsx'
 import { PaperTop } from './papertop.tsx'
 import { Settings } from './settings.tsx'
 import { StatusOverlay } from './status.tsx'
@@ -1313,6 +1318,34 @@ export function App(): React.JSX.Element {
         )}
         <div
           className="sepia-paper-area"
+          onClickCapture={(event) => {
+            // 链接点击（F16 / F18 / D-39）。**在捕获阶段接**：CM6 自己也管点击，
+            // 冒泡阶段轮到我们时光标已经被它挪走了。
+            const target = event.target as HTMLElement | null
+            if (target === null || target.closest('.cm-md-link') === null) return
+            const instance = editor.current
+            const book = sessionRef.current.book
+            if (instance === null) return
+            // 从点中的位置往回找这条链接的 `](目标)`
+            const text = instance.read()
+            const label = target.textContent ?? ''
+            const at = label === '' ? -1 : text.indexOf(`[${label}](`)
+            const url = at === -1 ? null : /\]\(([^)\s]+)\)/.exec(text.slice(at))?.[1] ?? null
+            if (url === null) return
+            event.preventDefault()
+            event.stopPropagation()
+            if (/^https?:\/\//i.test(url)) {
+              // **外链默认进右栏阅读模式**（D-39）；按住 ⌘ 才交系统浏览器
+              if (event.metaKey || appConfig.externalLinks === 'system') void api.openExternal(url)
+              else setRightbar((now) => openRight(now, { kind: 'browser', url }))
+              return
+            }
+            if (book === null) return
+            const absolute = tabPath(book, url)
+            // **⌘点击 = 右栏开第二编辑器**（F16）；单击 = 当前 tab 跳转
+            if (event.metaKey) setRightbar((now) => openRight(now, { kind: 'split', path: absolute }))
+            else void openInTab(absolute)
+          }}
           onDragOver={(event) => event.preventDefault()}
           onDropCapture={(event) => {
             // **捕获阶段**：CM6 自己也管 drop/paste，冒泡阶段轮到我们时它可能
@@ -1357,6 +1390,28 @@ export function App(): React.JSX.Element {
           onLinks={() => setRightbar((now) => openRight(now, { kind: 'links' }))}
           onThreads={() => setRightbar((now) => openRight(now, { kind: 'threads' }))}
         />
+        {metaOpen && (
+          <MetaTable
+            text={draft.current}
+            onSet={(key, value) => {
+              const instance = editor.current
+              if (instance === null) return
+              // **整篇替换但只有那一行变**：core 的 `setMetaField` 保证其余字节原样，
+              // 这里走 CAS 通道（compare 的是当前全文）——中途被别处改过就不写
+              const before = instance.read()
+              const after = setMetaField(before, key, value)
+              if (after === before) return
+              instance.replaceGuarded({
+                range: { from: 0, to: before.length },
+                expectedText: before,
+                replacement: after,
+              })
+              draft.current = instance.read()
+              setDirty(true)
+              autosave.current?.bump()
+            }}
+          />
+        )}
         <EditorHost
           doc={page.body}
           lineEnding={page.fidelity.lineEnding}
@@ -1444,6 +1499,24 @@ export function App(): React.JSX.Element {
               setFocusThread(null)
             }}
           >
+            {rightbar.kind === 'links' && (
+              <LinksPanel
+                text={draft.current}
+                onOpenPage={(relative) => {
+                  const book = sessionRef.current.book
+                  if (book !== null) void openInTab(tabPath(book, relative))
+                }}
+                onOpenExternal={(url) => setRightbar({ kind: 'browser', url })}
+              />
+            )}
+            {rightbar.kind === 'browser' && (
+              <Reader url={rightbar.url} onOpenSystem={(url) => void api.openExternal(url)} />
+            )}
+            {rightbar.kind === 'split' && (
+              // F16 @ 双屏：右栏是**完整的第二编辑器**，不是只读预览。
+              // **永远只有两栏**——再 ⌘点新引用替换右栏内容（core 的 openRight 保证）
+              <SplitEditor path={rightbar.path} />
+            )}
             {rightbar.kind === 'threads' && (
               <ThreadPanel
                 view={threadView}

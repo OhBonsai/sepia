@@ -41,6 +41,12 @@ export const copy = {
   'rightbar.browser': '浏览',
   'rightbar.close': '关闭右栏',
   'paper.meta': '属性',
+  'meta.blank': '—',
+  'links.none': '这一篇还没有引用别处',
+  'links.external': '外链',
+  'reader.loading': '正在抽取正文…',
+  'reader.failed': '这一页抽不出正文（可能是动态页或付费墙）',
+  'reader.open.system': '在系统浏览器打开',
   'paper.links': '连接',
   'paper.threads': '对话',
 

@@ -1235,3 +1235,137 @@ body {
   border: 1px solid var(--sepia-syn-function);
   border-radius: 2px;
 }
+
+/* ── P4 · ▤ 属性表（F8）：**行内展开**，它是纸最上面那几行的另一个画法 ──── */
+.sepia-meta {
+  width: min(760px, 100%);
+  padding: 10px 0;
+  margin: 0 auto;
+  font-size: 13px;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-meta-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+/* 等宽键 + 值（F8 原文）：键对齐了，一列扫下去才读得快 */
+.sepia-meta-key {
+  flex: none;
+  width: 84px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-meta-value {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  color: var(--sepia-ink);
+  cursor: text;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.sepia-meta-value:hover {
+  border-color: var(--sepia-rule);
+}
+
+.sepia-meta-blank {
+  font-style: normal;
+  color: var(--sepia-ink-muted);
+  opacity: 0.5;
+}
+
+/* ── P5 · 连接面板（F17）· 双屏（F16）· 阅读模式（F18/D-39）───────────── */
+.sepia-linkspanel {
+  padding: 8px;
+}
+
+.sepia-link-row {
+  padding: 7px 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-link-row:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-link-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.sepia-link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 位置标注（第 N 段 / 末段 / 外链）——只给一列路径的话，
+   用户还得回正文里翻一遍才知道那是哪句话 */
+.sepia-link-where {
+  flex: none;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-link-excerpt {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-links-empty,
+.sepia-reader-note,
+.sepia-split-note {
+  padding: 14px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-reader-note button,
+.sepia-reader button {
+  display: block;
+  margin-top: 10px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+/* 阅读模式：**按 Sepia 自己的排版呈现**——它不是一个浏览器，是一篇文章 */
+.sepia-reader {
+  padding: 16px 18px;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.sepia-reader-title {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.sepia-reader-url {
+  margin-bottom: 14px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  text-overflow: ellipsis;
+}
+
+.sepia-split {
+  height: 100%;
+}

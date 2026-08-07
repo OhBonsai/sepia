@@ -25,6 +25,7 @@ import {
 
 import { takeNextPendingPath } from '../argv.ts'
 import { loadConfig, saveConfig } from '../services/config.ts'
+import { readExternal, type ReaderResult } from '../services/reader.ts'
 import { allowAssetRoot } from '../services/assets.ts'
 import { loadWorkspaces, saveWorkspaces } from '../services/workspaces.ts'
 import { openBookStore } from '../services/books.ts'
@@ -215,6 +216,18 @@ export function registerIpc(paths: SepiaPaths, initialConfig: AppConfig): void {
     await saveConfig(paths, merged)
     config = merged.config
     return { ok: true, value: merged.config }
+  })
+
+  // 外链阅读模式（190 P5 / D-39）。**不是内嵌浏览器**——理由见 services/reader.ts。
+  ipcMain.handle('reader/read', async (_event, url: unknown): Promise<IoResult<ReaderResult>> => {
+    if (typeof url !== 'string') return { ok: false, reason: 'url must be a string' }
+    return readExternal(url)
+  })
+
+  ipcMain.handle('reader/open-system', async (_event, url: unknown): Promise<IoResult<void>> => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { ok: false, reason: 'only http(s)' }
+    await shell.openExternal(url)
+    return { ok: true, value: undefined }
   })
 
   // 已知 book 列表（190 P2 / H1）。**两项**：读、加——移除归设置页（P3）。

@@ -25,7 +25,10 @@
     "多 book（H1）需要一份已知 book 列表。**没有 remove**：移除 book 归设置页，",
     "而设置页走 config 通道，不必在这儿再开一个口子。",
     "同期 +2：api.config.get/set（设置页）。写是**合并补丁**不是整份覆盖——",
-    "config.json 里可能有用户手写的或未来版本的键，整份覆盖会把它们抹掉。"
+    "config.json 里可能有用户手写的或未来版本的键，整份覆盖会把它们抹掉。",
+    "同期 +1：api.reader.read（外链阅读模式，D-39）。**不是内嵌浏览器**——",
+    "190 P5 的任务描述写的是 WebContentsView，那是 F18 的旧描述，D-39 已否。",
+    "于是这里只有一项抓取，没有 nav/back/forward 那一串（原申报 api.browser.* 三项作废）。"
   ],
   "surface": [
     "api.agent.interrupt",
@@ -58,6 +61,8 @@
     "api.library.scan",
     "api.library.titles",
     "api.perf.mark",
+    "api.reader.openSystem",
+    "api.reader.read",
     "api.session.get",
     "api.session.set",
     "api.theme.get",
