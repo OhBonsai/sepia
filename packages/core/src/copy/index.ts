@@ -48,6 +48,23 @@ export const copy = {
   // ⌘⇧I 信息浮层（D-30）。只读，不放操作。
   'cmd.info.panel': '信息',
   'cmd.status.panel': '状态浮层',
+
+  // F2 标准快捷键集（D-26）
+  'cmd.format.bold': '加粗',
+  'cmd.format.italic': '斜体',
+  'cmd.format.code': '行内代码',
+  'cmd.format.link': '链接',
+  'cmd.format.h1': '标题 1',
+  'cmd.format.h2': '标题 2',
+  'cmd.format.h3': '标题 3',
+  'cmd.format.h4': '标题 4',
+  'cmd.format.h5': '标题 5',
+  'cmd.format.h6': '标题 6',
+  'cmd.format.body': '还原为正文',
+  'cmd.format.codeblock': '代码块',
+  'cmd.format.quote': '引用块',
+  'cmd.format.bullet': '无序列表',
+  'cmd.format.ordered': '有序列表',
   'status.tab.agent': 'Agent',
   'status.tab.mcp': 'MCP / 技能',
   'status.engine.starting': '引擎启动中…',

@@ -11,6 +11,7 @@ import {
   tabPath,
   tabRelative,
   updateTab,
+  type CopyKey,
   type EngineStatus,
   type MarkupRun,
   type RetryHandle,
@@ -725,6 +726,69 @@ export function App(): React.JSX.Element {
       when: needsPage,
       run: summon,
     })
+    // ── F2 标准快捷键集（D-26）。键位在 CM6 的 keymap 里（那才抢得过它自己的表），
+    // 这里注册命令是为了让 ⌘/ 看板与设置快捷键页有同一份数据源（T-03）。
+    const fmt = (
+      id: string,
+      title: CopyKey,
+      key: string,
+      run: (instance: MountedEditor) => void,
+    ): void => {
+      registerCommand({
+        id,
+        title,
+        key,
+        group: 'inline',
+        when: (context) => context.hasPage && !context.markupOpen,
+        run: () => {
+          const instance = editor.current
+          if (instance !== null) run(instance)
+        },
+      })
+    }
+    fmt('format.bold', 'cmd.format.bold', 'Mod-b', (it) => it.format.bold())
+    fmt('format.italic', 'cmd.format.italic', 'Mod-i', (it) => it.format.italic())
+    fmt('format.code', 'cmd.format.code', 'Mod-e', (it) => it.format.code())
+    fmt('format.link', 'cmd.format.link', 'Mod-Shift-k', (it) => it.format.link())
+    for (const level of [1, 2, 3, 4, 5, 6] as const) {
+      fmt(`format.h${String(level)}`, `cmd.format.h${String(level)}` as CopyKey, `Mod-${String(level)}`, (it) =>
+        it.format.heading(level),
+      )
+    }
+    fmt('format.body', 'cmd.format.body', 'Mod-0', (it) => it.format.heading(0))
+    registerCommand({
+      id: 'format.codeBlock',
+      title: 'cmd.format.codeblock',
+      key: 'Mod-Alt-c',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.codeBlock(),
+    })
+    registerCommand({
+      id: 'format.quote',
+      title: 'cmd.format.quote',
+      key: 'Mod-Alt-q',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.quote(),
+    })
+    registerCommand({
+      id: 'format.bullet',
+      title: 'cmd.format.bullet',
+      key: 'Mod-Alt-u',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.bullet(),
+    })
+    registerCommand({
+      id: 'format.ordered',
+      title: 'cmd.format.ordered',
+      key: 'Mod-Alt-o',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.ordered(),
+    })
+
     registerCommand({
       id: 'view.keys',
       title: 'cmd.keys.board',
@@ -758,7 +822,10 @@ export function App(): React.JSX.Element {
     registerCommand({
       id: 'library.sidebar',
       title: 'cmd.library.sidebar',
-      key: 'Mod-b',
+      // **⌘B 让位给加粗**（190 P1 的 ⌘B 冲突裁决，见附录 A-1）：
+      // 加粗是写作动作，一天按几十次；侧边栏是视图开关，一天按几次。
+      // 侧边栏改 `⌘\`——Obsidian 用的就是它，肌肉记忆不是从零建。
+      key: 'Mod-\\',
       group: 'file',
       run: () => setSidebarOpen((openNow) => !openNow),
     })
@@ -827,7 +894,7 @@ export function App(): React.JSX.Element {
         // 人工轮连入口都找不到）。删除没有自绘确认：回收站本身就是撤销通道
         event.preventDefault()
         void execute('files.trash')
-      } else if (event.key === 'b') {
+      } else if (event.key === '\\') {
         event.preventDefault()
         setSidebarOpen((openNow) => !openNow)
       } else if (event.key === 'w') {

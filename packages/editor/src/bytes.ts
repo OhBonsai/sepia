@@ -1,3 +1,5 @@
+import type { EditorState } from '@codemirror/state'
+
 // 字节保真的三件小事。**不变量 2 的第一道防线，且它防的是 CM6 自己。**
 //
 // CM6 的 `EditorState.create` 默认按 /\r\n?|\n/ 拆行、再用 '\n' join 回去——
@@ -47,4 +49,20 @@ export function readFidelity(raw: string): { fidelity: TextFidelity; body: strin
 
 export function writeFidelity(body: string, fidelity: TextFidelity): string {
   return restoreBom(body, fidelity.bom)
+}
+
+/**
+ * 取全文。**必须**走这里，不许 `state.doc.toString()`。
+ *
+ * `toString()` 看着是对的，但它**永远用 '\n' 拼行**——`Text.sliceString` 的 `lineSep`
+ * 默认就是 '\n'，与 `lineSeparator` facet 无关。于是一个 CRLF 文件即使正确地按
+ * '\r\n' 拆了行，`toString()` 也会把它交还成 LF，不变量 2 照样破。
+ * `state.sliceDoc()` 才用 `state.lineBreak`（即 facet 的值）。
+ *
+ * **它住在 bytes.ts 而不是 base.ts**（190 P1 挪的）：F2 的格式命令要用它，
+ * 而格式命令是 base 的下游——留在 base 里就成了 `base → format → base` 的环，
+ * `check:deps` 的 no-circular 当场红。它本来就属于这个文件：守的是同一条不变量。
+ */
+export function readDoc(state: EditorState): string {
+  return state.sliceDoc()
 }
