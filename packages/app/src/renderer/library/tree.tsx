@@ -58,7 +58,7 @@ export function FileTree(props: FileTreeProps): React.JSX.Element {
           // 右键菜单接 6a 的四条文件命令。**不自绘菜单**——命令注册表已经是
           // 那四件事的唯一入口，再画一套 UI 就成了第二个入口（纪律 6 的精神）。
           event.preventDefault()
-          if (entry.kind === 'file') void execute('file.trash', entry.path)
+          if (entry.kind === 'file') void execute('files.trash', entry.path)
         }}
       >
         {entry.name}

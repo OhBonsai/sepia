@@ -694,3 +694,226 @@ body {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ── P0 · Tab 栏终态（原型 Page 页 Layout）──────────────────────────────
+   ⌂ │ 文件 tab（■脏标 ×关闭）… │ ＋ │ ▤
+   ⌂ 与文件 tab 用**同一套高亮**：主页是个可以停留的地方，不是一个按钮。 */
+.sepia-tab-home,
+.sepia-tab-add,
+.sepia-tab-status {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+}
+
+.sepia-tab-home[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  border-bottom-color: var(--sepia-ink);
+}
+
+.sepia-tab-home:hover,
+.sepia-tab-add:hover,
+.sepia-tab-status:hover {
+  color: var(--sepia-ink);
+}
+
+/* 把 ▤ 顶到最右：中间填一段弹性空白，不给它 margin-left:auto——
+   那样在 tab 溢出滚动时它会跟着滚走。 */
+.sepia-tabs-spacer {
+  flex: 1;
+  min-width: 12px;
+}
+
+.sepia-tab-status[data-sepia-tab-status-badge='true']::after {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 3px;
+  vertical-align: super;
+  content: '';
+  background: var(--sepia-danger);
+  border-radius: 50%;
+}
+
+/* **脏标与关闭同一个位置**：平时 ■，悬停变 ×。
+   两个都常驻的话，一排 tab 右边全是小东西。 */
+.sepia-tab-dirty-mark {
+  font-size: 8px;
+  opacity: 0;
+}
+
+.sepia-tab[data-sepia-tab-dirty='true'] .sepia-tab-dirty-mark {
+  opacity: 0.75;
+}
+
+.sepia-tab-close-mark {
+  display: none;
+}
+
+.sepia-tab:hover .sepia-tab-dirty-mark {
+  display: none;
+}
+
+.sepia-tab:hover .sepia-tab-close-mark {
+  display: inline;
+}
+
+/* ── P0 · 纸顶三图标 ───────────────────────────────────────────────────
+   ▤ 属性在纸里行内展开，🔗 连接与 💬 对话开右侧面板——去处不同是有意的。 */
+.sepia-paper-top {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  width: min(760px, 100%);
+  padding: 14px 0 6px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-paper-name {
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-paper-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.sepia-paper-icon {
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  opacity: 0.6;
+}
+
+.sepia-paper-icon:hover,
+.sepia-paper-icon[data-sepia-paper-icon-on='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  opacity: 1;
+}
+
+/* ── P0 · 右侧区：一个位置，三种占用者互斥 ─────────────────────────── */
+.sepia-rightbar {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--sepia-rule);
+}
+
+/* 中缝**自己就是把手**，不额外画竖线——多一根线多一道噪声。 */
+.sepia-rightbar-seam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 5;
+  width: 7px;
+  cursor: col-resize;
+}
+
+.sepia-rightbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-rightbar-head button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-rightbar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── P6 · ▤ 状态浮层（F20）────────────────────────────────────────── */
+.sepia-status {
+  position: fixed;
+  top: 34px;
+  right: 12px;
+  z-index: 35;
+  width: 300px;
+  padding: 10px 12px;
+  font-size: 12px;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-status-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-status-tabs button {
+  padding: 2px 8px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+}
+
+.sepia-status-tabs button[data-sepia-status-tab-active='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+}
+
+.sepia-status-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.sepia-status-hint {
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-status-empty {
+  padding: 6px 0;
+  line-height: 1.6;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sepia-ink-muted);
+}
+
+.sepia-status-dot[data-sepia-status-engine='ready'] {
+  background: var(--sepia-syn-keyword);
+}
+
+.sepia-status-dot[data-sepia-status-engine='absent'] {
+  background: var(--sepia-danger);
+}

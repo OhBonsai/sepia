@@ -93,4 +93,18 @@ describe('文件命令', () => {
     expect(api.moveFile).not.toHaveBeenCalled()
     expect(api.trashFile).not.toHaveBeenCalled()
   })
+
+  it('**没有 page 但有 book 时，新建落在 book 根**（主页 ✎ 与 tab ＋ 走这条）', async () => {
+    reset()
+    const seen: string[] = []
+    registerFileCommands(() => ({
+      book: '/tmp/book',
+      page: null,
+      onOpen: (path) => seen.push(path),
+      onGone: () => undefined,
+    }))
+    await execute('files.new', { name: '新的.md' })
+    expect(api.createFile).toHaveBeenCalledWith('/tmp/book/新的.md')
+    expect(seen).toHaveLength(1)
+  })
 })

@@ -57,6 +57,7 @@
     "check:bridge": "bun scripts/check-bridge.mjs",
     "check:workspace": "bun scripts/check-workspace.mjs",
     "check:theme": "bun scripts/check-theme.mjs",
+    "check:commands": "bun scripts/check-commands.mjs",
     "check:marks": "bun scripts/check-marks.mjs",
     "check:artifacts": "bun scripts/check-artifacts.mjs",
     "check:patches": "bun scripts/check-patches.mjs",

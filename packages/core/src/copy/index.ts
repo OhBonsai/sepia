@@ -20,6 +20,19 @@ export const copy = {
   'error.save.failed': '保存失败',
   'error.page.missing': '上次的 page 已经不在原处了',
 
+  // Tab 栏终态与右侧区（190 P0）
+  'tabs.home': '主页',
+  'tabs.new': '新建笔记',
+  'tabs.status': '状态',
+  'rightbar.threads': '对话',
+  'rightbar.links': '连接',
+  'rightbar.split': '引用',
+  'rightbar.browser': '浏览',
+  'rightbar.close': '关闭右栏',
+  'paper.meta': '属性',
+  'paper.links': '连接',
+  'paper.threads': '对话',
+
   // ⌘/ 快捷键看板（D-32 / F23）。**只读看板，不是命令面板**。
   'keys.title': '快捷键',
   'keys.search': '搜快捷键…',
@@ -34,6 +47,15 @@ export const copy = {
 
   // ⌘⇧I 信息浮层（D-30）。只读，不放操作。
   'cmd.info.panel': '信息',
+  'cmd.status.panel': '状态浮层',
+  'status.tab.agent': 'Agent',
+  'status.tab.mcp': 'MCP / 技能',
+  'status.engine.starting': '引擎启动中…',
+  'status.engine.ready': '引擎就位',
+  'status.engine.absent': 'Agent 缺席',
+  'status.models.loading': '正在取模型列表…',
+  'status.models.none': '还没有可用模型',
+  'status.mcp.isolated': '未配置——Sepia 用的是独立引擎环境，不读你在别处装的 MCP 与技能',
   'info.words': '字数',
   'info.saved': '上次保存',
   'info.saved.never': '还没保存过',

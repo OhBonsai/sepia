@@ -14,6 +14,8 @@ import {
   type EngineStatus,
   type MarkupRun,
   type RetryHandle,
+  type Rightbar as RightbarState,
+  openRight,
   retryWithBackoff,
   shouldInterceptClose,
   type SessionState,
@@ -46,8 +48,13 @@ import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
 import { entries as commandEntries, execute, registerCommand } from '../commands/registry.ts'
+import { useFileCommands } from '../files/commands.ts'
 import { Cheatsheet } from './cheatsheet.tsx'
 import { InfoOverlay } from './info.tsx'
+import { PaperTop } from './papertop.tsx'
+import { StatusOverlay } from './status.tsx'
+import { Rightbar } from './rightbar.tsx'
+import { Tabs } from './tabs.tsx'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
@@ -119,7 +126,19 @@ export function App(): React.JSX.Element {
   // Stage 5b：线程与徽章。**去向是算出来的**（core 的 placeThreads），这里只存算完的结果。
   const threadStore = useRef<ThreadStore | null>(null)
   const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
-  const [panelOpen, setPanelOpen] = useState(false)
+  /**
+   * 右侧区（190 P0）。**一个位置，三种占用者互斥**——语义在 core 的 `openRight`。
+   * 原来的 `panelOpen` 是个 boolean，只能表达"对话面板开没开"；
+   * 连接面板与 @ 双屏进来之后，三个 boolean 会有八种组合、其中五种非法。
+   */
+  const [rightbar, setRightbar] = useState<RightbarState>(null)
+  const [rightWidth, setRightWidth] = useState(360)
+  /** 用户点了 ⌂：有 tab 也停在主页。**主页是个可以停留的地方**，不只是空态。 */
+  const [atHome, setAtHome] = useState(false)
+  /** ▤ 属性表展开与否（P4 填内容）。 */
+  const [metaOpen, setMetaOpen] = useState(false)
+  /** ▤ 状态浮层（P6 填内容）。 */
+  const [statusOpen, setStatusOpen] = useState(false)
   /** 侧边栏（⌘B）。**可全收起**——收起时纸就是整扇窗（§2.1 ②）。 */
   const [sidebarOpen, setSidebarOpen] = useState(true)
   /**
@@ -322,7 +341,7 @@ export function App(): React.JSX.Element {
       store.dispose()
       threadStore.current = null
       setThreadView({ badges: [], orphans: [] })
-      setPanelOpen(false)
+      setRightbar(null)
     }
   }, [page])
 
@@ -395,6 +414,16 @@ export function App(): React.JSX.Element {
     setSession(next)
     void api.setSession(next)
   }, [withCurrentPosition])
+
+  /**
+   * 当前 page 路径的 ref。
+   * 命令上下文是个**每次调用都现取**的函数（`context()`），挂 state 会让它一直
+   * 停在注册那一刻的值——四条文件命令会永远对着第一张纸操作。
+   */
+  const pageRef = useRef<string | null>(null)
+  useEffect(() => {
+    pageRef.current = page?.path ?? null
+  }, [page])
 
   /** 重命名/移动之后查一遍引用。**只查不改**，查到了才出横条。 */
   const checkLinks = useCallback(async (from: string, to: string): Promise<void> => {
@@ -630,6 +659,31 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
+  /**
+   * 四条文件命令（新建/改名/移动/删除）。
+   *
+   * **Stage 8 开工时发现它们从来没被注册过**：`files/commands.ts` 定义了
+   * `useFileCommands`，而 renderer 里**没有任何地方 import 它**。于是 ⌘⌫ 与树右键
+   * 都在调一个不存在的命令——`execute` 对未知 id 静默返回，所以一路无声。
+   * 6b 人工轮第 6 项「⌘⌫ 删除 → 废纸篓里找到」当时判了通过，但按代码它不可能工作。
+   * 现在补上注册，并加了 `check:commands` 守住这一类（execute 的 id 必须注册过）。
+   */
+  useFileCommands(
+    useCallback(
+      () => ({
+        book: sessionRef.current.book,
+        page: pageRef.current,
+        onOpen: (path: string) => void openInTab(path),
+        onGone: () => {
+          setPage(null)
+          setRightbar(null)
+        },
+        onMoved: (from: string, to: string) => void checkLinks(from, to),
+      }),
+      [openInTab, checkLinks],
+    ),
+  )
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     // `save` 现在会交出成对 commit 的两点（5b），命令层不关心它——丢掉返回值即可
@@ -677,6 +731,12 @@ export function App(): React.JSX.Element {
       key: 'Mod-/',
       group: 'file',
       run: () => setKeysOpen((shown) => !shown),
+    })
+    registerCommand({
+      id: 'view.status',
+      title: 'cmd.status.panel',
+      group: 'file',
+      run: () => setStatusOpen((shown) => !shown),
     })
     registerCommand({
       id: 'view.info',
@@ -731,7 +791,7 @@ export function App(): React.JSX.Element {
       // **没有 key**——这笔入口债（6b 记的）从此每次按 ⌘/ 都会以「未绑定」被看见一次
       group: 'agent',
       when: needsPage,
-      run: () => setPanelOpen((isOpen) => !isOpen),
+      run: () => setRightbar((now) => openRight(now, { kind: 'threads' })),
     })
   }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
@@ -833,32 +893,19 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="sepia-shell" data-sepia-shell={status} data-sepia-markup-report={report ?? undefined}>
-      {session.tabs.length > 0 && (
-        <div className="sepia-tabs" data-sepia-tabs={String(session.tabs.length)}>
-          {session.tabs.map((tab, index) => (
-            <div
-              key={tab.page}
-              className="sepia-tab"
-              data-sepia-tab={tab.page}
-              data-sepia-tab-active={index === session.active ? 'true' : 'false'}
-              onClick={() => void switchTab(index)}
-            >
-              {/* 只有文件名，没有图标——tab 条是一行细字，不是工具栏 */}
-              <span className="sepia-tab-name">{tab.page.split('/').pop()}</span>
-              <span
-                className="sepia-tab-close"
-                data-sepia-tab-close={tab.page}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void closeTabAt(index)
-                }}
-              >
-                ×
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <Tabs
+        tabs={session.tabs.map((tab) => ({ page: tab.page, dirty: dirty && tab.page === session.tabs[session.active]?.page }))}
+        active={session.active}
+        atHome={atHome || page === null}
+        onHome={() => setAtHome(true)}
+        onSelect={(index) => {
+          setAtHome(false)
+          void switchTab(index)
+        }}
+        onClose={(index) => void closeTabAt(index)}
+        onCreate={() => void execute('files.new')}
+        onStatus={() => void execute('view.status')}
+      />
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}
@@ -954,6 +1001,7 @@ export function App(): React.JSX.Element {
           </div>
         </div>
       )}
+      {statusOpen && <StatusOverlay engine={engine} onClose={() => setStatusOpen(false)} />}
       {keysOpen && (
         <Cheatsheet
           entries={commandEntries({ markupOpen: markup !== null, hasPage: page !== null, hasBook: session.book !== null })}
@@ -996,18 +1044,7 @@ export function App(): React.JSX.Element {
           }}
         />
       )}
-      {panelOpen && page !== null && (
-        <ThreadPanel
-          view={threadView}
-          focusId={focusThread}
-          directory={page.path.slice(0, page.path.lastIndexOf('/'))}
-          page={page.path}
-          onClose={() => {
-            setPanelOpen(false)
-            setFocusThread(null)
-          }}
-        />
-      )}
+
       {markup !== null &&
         page !== null &&
         createPortal(
@@ -1093,13 +1130,23 @@ export function App(): React.JSX.Element {
             void dropImages(images)
           }}
         >
-      {page === null ? (
+      {page === null || atHome ? (
         <Home
           book={session.book}
           onOpenBook={chooseBook}
           onOpenPage={(absolute) => void openInTab(absolute)}
         />
       ) : (
+        <>
+        <PaperTop
+          name={page.path.split('/').pop() ?? ''}
+          metaOpen={metaOpen}
+          linksOpen={rightbar?.kind === 'links'}
+          threadsOpen={rightbar?.kind === 'threads'}
+          onMeta={() => setMetaOpen((now) => !now)}
+          onLinks={() => setRightbar((now) => openRight(now, { kind: 'links' }))}
+          onThreads={() => setRightbar((now) => openRight(now, { kind: 'threads' }))}
+        />
         <EditorHost
           doc={page.body}
           lineEnding={page.fidelity.lineEnding}
@@ -1119,7 +1166,7 @@ export function App(): React.JSX.Element {
             // W11：点徽章与开面板是同一个面板的两条入口。点进来的这条要**直接展开**，
             // 否则用户点了一个具体的点，却只得到一张列表——那不叫"打开这条线程"。
             setFocusThread(id)
-            setPanelOpen(true)
+            setRightbar({ kind: 'threads' })
           }}
           onChange={(next) => {
             draft.current = next
@@ -1158,8 +1205,35 @@ export function App(): React.JSX.Element {
           }}
           onReady={() => api.perfMark('t5')}
         />
+        </>
       )}
         </div>
+        {/* 右侧区：**一个位置，三种占用者互斥**（190 P0）。
+            装什么由这里决定，容器自己不认识占用者的种类。 */}
+        {rightbar !== null && page !== null && (
+          <Rightbar
+            state={rightbar}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            onClose={() => {
+              setRightbar(null)
+              setFocusThread(null)
+            }}
+          >
+            {rightbar.kind === 'threads' && (
+              <ThreadPanel
+                view={threadView}
+                focusId={focusThread}
+                directory={page.path.slice(0, page.path.lastIndexOf('/'))}
+                page={page.path}
+                onClose={() => {
+                  setRightbar(null)
+                  setFocusThread(null)
+                }}
+              />
+            )}
+          </Rightbar>
+        )}
       </div>
     </div>
   )
