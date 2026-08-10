@@ -15,6 +15,8 @@ import { api } from '../services/api.ts'
 // 输入框或起原生对话框——起对话框要在桥上多开一项，而 170 §1.3 申报的暴露面恰好五项。
 
 export interface FileCommandContext {
+  /** 当前 book 根。没有 page 时新建落在这里（主页 ✎ / tab ＋）。 */
+  book?: string | null
   /** 当前 page 的绝对路径；null 时四条命令都得体地什么都不做。 */
   page: string | null
   /** 文件动作产生了新路径（新建、改名、移动）时，让 shell 打开它。 */
@@ -56,12 +58,18 @@ export function registerFileCommands(context: () => FileCommandContext): void {
     id: 'files.new',
     title: 'cmd.file.new',
     run: async (arg) => {
-      const { page, onOpen } = context()
-      // 没有当前 page 时不猜位置：那会把文件建到用户没预期的地方。
-      // 「无 book 时新建到哪」是主页/onboarding 的事（b 期）。
-      if (page === null) return
+      const { page, book, onOpen } = context()
       const name = argString(arg, 'name') ?? `${t('app.untitled')}.md`
-      const created = await api.createFile(resolveTarget(page, name))
+      // 有 page 就建在它旁边；没 page 但有 book 就建在 book 根（主页 ✎ 与 tab ＋ 走这条）。
+      // **两个都没有才放弃**——那时确实没有任何位置可猜，猜了就是把文件建到
+      // 用户没预期的地方。
+      // `book` 是可选字段，**不能只判 `!== null`**——没传时它是 `undefined`，
+      // 那条判断会通过，于是新建出一个叫 `undefined/未命名.md` 的东西。
+      // 既有的「没有 page 时四条命令什么都不做」当场把它抓住了（回归网正常工作）。
+      const target =
+        page !== null ? resolveTarget(page, name) : typeof book === 'string' && book !== '' ? `${book}/${name}` : null
+      if (target === null) return
+      const created = await api.createFile(target)
       if (created.ok) onOpen(created.value)
     },
   })

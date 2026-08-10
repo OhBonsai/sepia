@@ -192,16 +192,84 @@ export class ImageWidget extends SourceWidget {
   }
 }
 
+/**
+ * mermaid **惰性加载**，与 KaTeX 同一条理由（001 §4.7 / 纪律 12）：
+ * 它比 KaTeX 还大得多，放进同步路径会直接把冷启动顶穿。
+ * 模块到位前 widget 先显示图体源码，到位后原地换成真图——
+ * 替换只动 widget 自己的 DOM，**不产生任何 doc 事务**（字节铁律不破）。
+ */
+type Mermaid = typeof import('mermaid').default
+let mermaidModule: Mermaid | null = null
+let mermaidLoading: Promise<Mermaid> | null = null
+let mermaidSeq = 0
+
+function loadMermaid(): Promise<Mermaid> {
+  mermaidLoading ??= import('mermaid').then((mod) => {
+    const engine = mod.default
+    // 主题从**计算样式**里读 `--sepia-*`（架构 §4.4：色板只有一份真相）。
+    // 写死一套 mermaid 配色就等于第二份色板，切换亮暗时它不会跟着走。
+    const style = getComputedStyle(document.documentElement)
+    // **一个字面色值都不写**（纪律 3）：写兜底就等于在这儿藏了第二份色板，
+    // 而它永远不会跟着主题走。取不到就不传，让 mermaid 用它自己的默认——
+    // 取不到本身是 theme.css 出了问题，该在那儿修，不该在这儿补。
+    const read = (name: string): string => style.getPropertyValue(name).trim()
+    engine.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      fontFamily: 'inherit',
+      theme: 'base',
+      themeVariables: {
+        background: read('--sepia-paper'),
+        primaryColor: read('--sepia-surface'),
+        primaryTextColor: read('--sepia-ink'),
+        primaryBorderColor: read('--sepia-rule'),
+        lineColor: read('--sepia-ink-muted'),
+        textColor: read('--sepia-ink'),
+        mainBkg: read('--sepia-surface'),
+      },
+    })
+    mermaidModule = engine
+    return engine
+  })
+  return mermaidLoading
+}
+
 export class TextDiagramWidget extends SourceWidget {
   override toDOM(): HTMLElement {
-    const pre = document.createElement('pre')
-    pre.className = 'sepia-textdiagram'
-    // 去掉围栏行，只显示图体
-    pre.textContent = this.source
+    const wrap = document.createElement('div')
+    wrap.className = 'sepia-textdiagram'
+    // 去掉围栏行，只留图体
+    const body = this.source
       .split(/\r\n|\r|\n/)
       .slice(1, -1)
       .join('\n')
-    return pre
+    // 先把源码放上——模块还在路上时，用户至少看得见自己写了什么
+    const pre = document.createElement('pre')
+    pre.textContent = body
+    wrap.append(pre)
+
+    const paint = (engine: Mermaid): void => {
+      mermaidSeq += 1
+      void engine
+        .render(`sepia-mmd-${String(mermaidSeq)}`, body)
+        .then(({ svg }) => {
+          if (!wrap.isConnected) return
+          wrap.innerHTML = svg
+        })
+        .catch((error: unknown) => {
+          // **渲染失败不崩、也不装作没事**：退回源码 + 一行错，图表语法写错是常事
+          if (!wrap.isConnected) return
+          wrap.classList.add('sepia-textdiagram-broken')
+          const note = document.createElement('div')
+          note.className = 'sepia-textdiagram-error'
+          note.textContent = error instanceof Error ? error.message : String(error)
+          wrap.append(note)
+        })
+    }
+
+    if (mermaidModule) paint(mermaidModule)
+    else void loadMermaid().then(paint)
+    return wrap
   }
 }
 

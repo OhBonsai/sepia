@@ -1,4 +1,10 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { Prec } from '@codemirror/state'
+
+import { formatCommands } from './extensions/format.ts'
+
+// `readDoc` 迁到 bytes.ts（见那边注释），这里**重新导出**保持既有 import 路径不破
+export { readDoc } from './bytes.ts'
 import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView, drawSelection, keymap } from '@codemirror/view'
 
@@ -6,7 +12,7 @@ import type { EditorView as EditorViewType } from '@codemirror/view'
 
 import type { MarkupRun } from '@sepia/core'
 
-import type { LineEnding } from './bytes.ts'
+import { type LineEnding, readDoc } from './bytes.ts'
 import type { SearchApi } from './extensions/search-types.ts'
 import { markupHostExtension, markupHostPos, setMarkupHost } from './extensions/markup-host.ts'
 import {
@@ -67,6 +73,8 @@ export interface BaseExtensionOptions {
   onChange?: (doc: string) => void
   /** 光标变化时回调，用于写回 session。滚动另走 MountOptions.onScroll——它属于 view，不属于 state。 */
   onSelectionChange?: (cursor: number) => void
+  /** Tab 缩进宽度（设置「Tab 缩进宽度」，默认 2）。 */
+  tabWidth?: number
 }
 
 export function baseExtensions(options: BaseExtensionOptions = {}): Extension[] {
@@ -103,6 +111,28 @@ export function baseExtensions(options: BaseExtensionOptions = {}): Extension[] 
     //
     // 所以摘除必须发生在**这里**（键根本不进 CM6），而不是在应用层补救。
     // 新占一个 `Mod-x` 之前，先回来看看 `defaultKeymap` 里有没有它。
+    // F2 标准快捷键集（D-26）。**`Prec.highest` 压过 `defaultKeymap`**——
+    // 那张表里 `Mod-i`/`Mod-b` 之类另有其主，不抢在前面就轮不到我们。
+    Prec.highest(
+      keymap.of([
+        { key: 'Mod-b', run: formatCommands.bold },
+        { key: 'Mod-i', run: formatCommands.italic },
+        { key: 'Mod-e', run: formatCommands.code },
+        { key: 'Mod-Shift-k', run: formatCommands.link },
+        { key: 'Mod-Alt-c', run: formatCommands.codeBlock },
+        { key: 'Mod-Alt-q', run: formatCommands.quote },
+        { key: 'Mod-Alt-u', run: formatCommands.bullet },
+        { key: 'Mod-Alt-o', run: formatCommands.ordered },
+        ...[1, 2, 3, 4, 5, 6].map((level) => ({
+          key: `Mod-${String(level)}`,
+          run: formatCommands.heading(level),
+        })),
+        { key: 'Mod-0', run: formatCommands.heading(0) },
+        { key: 'Enter', run: formatCommands.enter },
+        { key: 'Tab', run: formatCommands.indent(options.tabWidth ?? 2, false) },
+        { key: 'Shift-Tab', run: formatCommands.indent(options.tabWidth ?? 2, true) },
+      ]),
+    ),
     keymap.of([...defaultKeymap.filter((binding) => !APP_OWNED_KEYS.has(binding.key ?? '')), ...historyKeymap]),
     paperTheme,
     ...listeners,
@@ -145,7 +175,29 @@ export interface MountOptions extends BaseExtensionOptions {
   onBadgeClick?: (id: string) => void
 }
 
+/**
+ * F2 标准快捷键集的动作面（190 P1 / D-26）。
+ *
+ * **挂成方法而不是交出 `EditorView`**——不变量 3 的结构保障就是"没人拿得到 view"。
+ * 一旦交出去，"AI 产出只能走 CAS"这条就退化成一条口头约定。
+ * 这些动作本身是**用户在写字**，走正常编辑事务、天然进 undo 历史。
+ */
+export interface FormatActions {
+  bold(): void
+  italic(): void
+  code(): void
+  strike(): void
+  link(): void
+  heading(level: number): void
+  quote(): void
+  bullet(): void
+  ordered(): void
+  codeBlock(): void
+}
+
 export interface MountedEditor {
+  /** F2 的动作面。命令注册表经它驱动 CM6（纪律 6：按钮与键位是同一条路）。 */
+  format: FormatActions
   /** 取全文。内部走 `readDoc`，调用方拿不到会规范化换行的那条路。 */
   read(): string
   focus(): void
@@ -243,6 +295,18 @@ export function mountEditor(options: MountOptions): MountedEditor {
   }
 
   return {
+    format: {
+      bold: () => void formatCommands.bold(view),
+      italic: () => void formatCommands.italic(view),
+      code: () => void formatCommands.code(view),
+      strike: () => void formatCommands.strike(view),
+      link: () => void formatCommands.link(view),
+      heading: (level: number) => void formatCommands.heading(level)(view),
+      quote: () => void formatCommands.quote(view),
+      bullet: () => void formatCommands.bullet(view),
+      ordered: () => void formatCommands.ordered(view),
+      codeBlock: () => void formatCommands.codeBlock(view),
+    },
     read: () => readDoc(view.state),
     focus: () => view.focus(),
     destroy: () => {
@@ -303,16 +367,3 @@ export function mountEditor(options: MountOptions): MountedEditor {
   }
 }
 
-/**
- * **取全文只许走这里。**
- *
- * `state.doc.toString()` 看着是对的，但它**永远用 '\n' 拼行**——`Text.sliceString`
- * 的 `lineSep` 参数默认就是 '\n'，与 `lineSeparator` facet 无关。于是一个 CRLF 文件
- * 即使正确地按 '\r\n' 拆了行，`toString()` 也会把它交还成 LF，不变量 2 照样破。
- *
- * `state.sliceDoc()` 才用 `state.lineBreak`（即 facet 的值）。两者差一个字符，
- * 后果是用户的整个文件被静默改写——所以这里包一层，让调用方**没有写错的机会**。
- */
-export function readDoc(state: EditorState): string {
-  return state.sliceDoc()
-}

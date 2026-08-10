@@ -22,6 +22,8 @@ export interface SepiaPaths {
   engineHome: string
   /** API key 密文（safeStorage 加密后的信封 json）。引擎侧零落盘，密文只在这里。 */
   credentials: string
+  /** 已知 book 列表（190 P2 / H1 多 book）。**是状态不是设置**，与 session 同族。 */
+  workspaces: string
 }
 
 export function sepiaPaths(userHome: string): SepiaPaths {
@@ -33,6 +35,7 @@ export function sepiaPaths(userHome: string): SepiaPaths {
     logs: join(home, 'logs'),
     engineHome: join(home, 'engine'),
     credentials: join(home, 'credentials.json'),
+    workspaces: join(home, 'workspaces.json'),
   }
 }
 

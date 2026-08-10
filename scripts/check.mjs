@@ -56,6 +56,7 @@ const STEPS = [
   { id: 'bridge', fast: false, cmd: ['bun', 'scripts/check-bridge.mjs'], label: 'preload 白名单' },
   { id: 'workspace', fast: false, cmd: ['bun', 'scripts/check-workspace.mjs'], label: 'workspace 边界' },
   { id: 'theme', fast: false, cmd: ['bun', 'scripts/check-theme.mjs'], label: '色板同源' },
+  { id: 'commands', fast: false, cmd: ['bun', 'scripts/check-commands.mjs'], label: '命令 id 对得上' },
   { id: 'artifacts', fast: false, cmd: ['bun', 'scripts/check-artifacts.mjs'], label: '引擎产物' },
   { id: 'patches', fast: false, cmd: ['bun', 'scripts/check-patches.mjs'], label: 'patch 可复现' },
   { id: 'marks', fast: false, cmd: ['bun', 'scripts/check-marks.mjs'], label: '豁免记号' },

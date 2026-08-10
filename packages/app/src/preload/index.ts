@@ -88,6 +88,28 @@ const api = {
     recents: (dir: string, page?: string) => ipcRenderer.invoke('library/recents', dir, page),
     titles: (dir: string, items: unknown[]) => ipcRenderer.invoke('library/titles', dir, items),
   },
+  // config 域（190 P3 设置页）：读全量、写补丁。**没有 reset**——
+  // 「恢复默认」是删掉 config.json 里那几行，用同一条写通道就够。
+  config: {
+    get: () => ipcRenderer.invoke('config/get'),
+    set: (patch: unknown) => ipcRenderer.invoke('config/set', patch),
+  },
+
+  // 外链阅读模式（190 P5 / D-39）：**一项**——抓取并抽出正文。
+  // 不是内嵌浏览器，所以没有 nav/back/forward 那一串。
+  reader: {
+    read: (url: string) => ipcRenderer.invoke('reader/read', url),
+    // D-39 的退路：抽不出正文时交给系统浏览器。**它必须真能走**，
+    // 否则"退回系统浏览器"只是一句话
+    openSystem: (url: string) => ipcRenderer.invoke('reader/open-system', url),
+  },
+
+  // workspaces 域（190 P2 / H1 多 book）。**两项**：读、加——移除归设置页。
+  workspaces: {
+    list: () => ipcRenderer.invoke('workspaces/list'),
+    add: (dir: string) => ipcRenderer.invoke('workspaces/add', dir),
+  },
+
   session: {
     get: () => ipcRenderer.invoke('session/get'),
     set: (state: unknown) => ipcRenderer.invoke('session/set', state),

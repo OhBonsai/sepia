@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { join, relative, dirname } from 'node:path'
 
 import {
   applyLinkUpdates,
@@ -138,12 +138,17 @@ export async function touchRecent(
  *
  * **只增不改**：目标重名时加序号，绝不覆盖已有的图——用户拖进来的图片是他的字节。
  */
-export async function importImage(name: string, bytes: Uint8Array, book: string): Promise<IoResult<string>> {
+export async function importImage(
+  name: string,
+  bytes: Uint8Array,
+  book: string,
+  directory?: string,
+): Promise<IoResult<string>> {
   const { mkdir: makeDir } = await import('node:fs/promises')
   const base = name.split('/').pop() ?? 'image'
-  let target = imageTarget(base, Date.now())
+  let target = imageTarget(base, Date.now(), directory)
   try {
-    await makeDir(join(book, 'img'), { recursive: true })
+    await makeDir(dirname(join(book, target)), { recursive: true })
     // 重名就加序号。**不覆盖**：覆盖会静默毁掉一张已经在用的图
     for (let n = 1; n < 100; n++) {
       try {

@@ -17,10 +17,17 @@ import {
   tabRelative,
   type RefCandidate,
   type TreeScan,
+  type Workspace,
+  addWorkspace,
+  configToDisk,
+  mergeConfig,
 } from '@sepia/core'
 
 import { takeNextPendingPath } from '../argv.ts'
+import { loadConfig, saveConfig } from '../services/config.ts'
+import { readExternal, type ReaderResult } from '../services/reader.ts'
 import { allowAssetRoot } from '../services/assets.ts'
+import { loadWorkspaces, saveWorkspaces } from '../services/workspaces.ts'
 import { openBookStore } from '../services/books.ts'
 import { fillTitles, importImage, readRecents, scanBook, touchRecent, updateLinks, type LinkUpdatePlan } from '../services/library.ts'
 import { loadSession, saveSession } from '../services/session-state.ts'
@@ -69,7 +76,8 @@ export function stopSavePipeline(): void {
   pipeline = null
 }
 
-export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
+export function registerIpc(paths: SepiaPaths, initialConfig: AppConfig): void {
+  let config = initialConfig
   pipeline = createSavePipeline(config)
   ipcMain.handle('file/read', async (_event, path: unknown): Promise<IoResult<string>> => {
     if (typeof path !== 'string' || !isAbsolute(path)) {
@@ -189,6 +197,52 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
 
   // ── library 域（Stage 6b，170 §2.3 申报值）────────────────────────────
   // 扫描**一次性异步**：它在 t5 之后才被调用，绝不进启动同步路径（纪律 12）。
+  // 设置页的读写（190 P3 / §3 预申报）。
+  //
+  // **写是"合并补丁"而不是"整份覆盖"**：设置页只认识它自己列出来的键，
+  // 而 config.json 里可能有用户手写的、或未来版本的键——整份覆盖会把它们抹掉。
+  // `serializeConfig` 本来就只写"与默认值的差异"并保留未识别字段，补丁式写入
+  // 与它是同一条原则。
+  ipcMain.handle('config/get', async (): Promise<IoResult<AppConfig>> => {
+    return { ok: true, value: (await loadConfig(paths)).config }
+  })
+
+  ipcMain.handle('config/set', async (_event, patch: unknown): Promise<IoResult<AppConfig>> => {
+    if (typeof patch !== 'object' || patch === null) return { ok: false, reason: 'patch must be an object' }
+    const loaded = await loadConfig(paths)
+    // 经 `mergeConfig` 走一遍：**用户从设置页也不能塞进一个非法值**，
+    // 与手改 config.json 走同一道容错闸（越界的数字、拼错的枚举都会被退回默认）
+    const merged = mergeConfig({ ...configToDisk(loaded.config, loaded.unknown), ...patch })
+    await saveConfig(paths, merged)
+    config = merged.config
+    return { ok: true, value: merged.config }
+  })
+
+  // 外链阅读模式（190 P5 / D-39）。**不是内嵌浏览器**——理由见 services/reader.ts。
+  ipcMain.handle('reader/read', async (_event, url: unknown): Promise<IoResult<ReaderResult>> => {
+    if (typeof url !== 'string') return { ok: false, reason: 'url must be a string' }
+    return readExternal(url)
+  })
+
+  ipcMain.handle('reader/open-system', async (_event, url: unknown): Promise<IoResult<void>> => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { ok: false, reason: 'only http(s)' }
+    await shell.openExternal(url)
+    return { ok: true, value: undefined }
+  })
+
+  // 已知 book 列表（190 P2 / H1）。**两项**：读、加——移除归设置页（P3）。
+  ipcMain.handle('workspaces/list', async (): Promise<IoResult<Workspace[]>> => {
+    return { ok: true, value: await loadWorkspaces(paths) }
+  })
+
+  ipcMain.handle('workspaces/add', async (_event, dir: unknown): Promise<IoResult<Workspace[]>> => {
+    if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
+    const next = addWorkspace(await loadWorkspaces(paths), dir)
+    const written = await saveWorkspaces(paths, next)
+    if (!written.ok) return written
+    return { ok: true, value: next }
+  })
+
   ipcMain.handle('library/scan', async (_event, dir: unknown): Promise<IoResult<TreeScan>> => {
     if (typeof dir !== 'string' || !isAbsolute(dir)) return { ok: false, reason: 'dir must be absolute' }
     // book 根也要登记：`sub/x.md` 里写 `../img/y.png` 时，page 所在目录这一个根不够
@@ -224,7 +278,7 @@ export function registerIpc(paths: SepiaPaths, config: AppConfig): void {
             ? new Uint8Array(bytes)
             : null
       if (data === null || data.byteLength === 0) return { ok: false, reason: 'empty image' }
-      return importImage(name, data, book)
+      return importImage(name, data, book, config.imageDirectory)
     },
   )
 

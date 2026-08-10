@@ -135,7 +135,16 @@ export function pushRecent(recents: string[], page: string, limit: number): stri
 // ── 图片落点与链接更新（§2.1 ⑤⑥）────────────────────────────────────────
 
 /**
- * 图片在 book 里的落点（架构 §4.9 落点表）：`img/<yyMMddHHmm>-<原名>`。
+ * 图片目录的默认值：**`assets/`**（D-40）。
+ *
+ * 原来写死 `img/`。D-40 裁的是"默认值应当选通行写法"——`assets/` 是 Typora
+ * 等编辑器的常见默认，而 `img/` 是某一个人的习惯。**读取侧一律按 md 里的实际
+ * 相对路径解析**，所以换默认值不会让既有的 `img/` 旧图失效（D-40 的实现约束）。
+ */
+export const IMAGE_DIR_DEFAULT = 'assets'
+
+/**
+ * 图片在 book 里的落点（架构 §4.9 落点表）：`<目录>/<yyMMddHHmm>-<原名>`。
  *
  * 时间戳在前是为了**天然按时间排序**，原名在后是为了还认得出它是什么。
  * `img/` 属用户内容（图片的家），不受纪律 20 约束——它就该躺在 book 里，
@@ -145,12 +154,13 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-export function imageTarget(originalName: string, at: number): string {
+export function imageTarget(originalName: string, at: number, directory = IMAGE_DIR_DEFAULT): string {
   const d = new Date(at)
   const stamp = `${String(d.getFullYear()).slice(2)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`
   // 文件名里的空格与特殊字符会让 markdown 链接失效，替成连字符
   const safe = originalName.replace(/[^\w.\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')
-  return `img/${stamp}-${safe === '' ? 'image' : safe}`
+  const dir = directory.replace(/^\/+|\/+$/g, '')
+  return `${dir === '' ? IMAGE_DIR_DEFAULT : dir}/${stamp}-${safe === '' ? 'image' : safe}`
 }
 
 /** 一处待更新的链接。 */
@@ -194,6 +204,32 @@ export function applyLinkUpdates(text: string, hits: LinkHit[], to: string): str
   let out = text
   for (const hit of [...hits].toSorted((a, b) => b.from - a.from)) {
     out = out.slice(0, hit.from) + to + out.slice(hit.to)
+  }
+  return out
+}
+
+/**
+ * 抽出正文里引用到的 **book 内 markdown**（190 P1 / 185 缺口 #4 / C4）。
+ *
+ * 组装器从 Stage 4 起就认 `at-content` 块，而**没有任何一环把正文里的引用喂给它**——
+ * 于是「这次 markup 的对话可带该文做 context」（分镜 9）一直是句空话。这是那一环。
+ *
+ * 只收**相对路径的 .md**：外链归 F18、绝对路径不该出现在 book 内引用里。
+ * 顺序按出现先后，去重——同一篇被引三次只该喂一遍。
+ */
+export function referencedPages(text: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const pattern = /\]\(([^)\s]+\.mdx?)\)/g
+  let match = pattern.exec(text)
+  while (match !== null) {
+    const target = (match[1] ?? '').replace(/^\.\//, '')
+    // 外链与绝对路径都不收
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.startsWith('/') && !seen.has(target)) {
+      seen.add(target)
+      out.push(target)
+    }
+    match = pattern.exec(text)
   }
   return out
 }

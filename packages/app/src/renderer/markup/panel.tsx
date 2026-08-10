@@ -12,6 +12,8 @@ import {
   type RevealState,
 } from '@sepia/core'
 
+import { type AgentModel, agent } from '../services/agent-bridge.ts'
+
 import { StreamPreview } from './preview.tsx'
 import { startMarkup, type MarkupHandle, type MarkupProgress } from './run.ts'
 import type { MarkupRequest } from './run.ts'
@@ -69,15 +71,33 @@ export function MarkupPanel(props: MarkupPanelProps): React.JSX.Element {
   }, [progress?.phase, reveal.revealed, received.length])
 
   const submit = useCallback(
-    (text: string) => {
+    (text: string, model?: { providerID: string; modelID: string }) => {
       if (text.trim() === '') return
       // 家具在提交这一瞬间就位——先切 stage，再发请求
       setStage('generating')
       setReveal(REVEAL_INITIAL)
-      handle.current = startMarkup({ ...request, instruction: text }, setProgress)
+      handle.current = startMarkup(
+        { ...request, instruction: text, ...(model === undefined ? {} : { model }) },
+        setProgress,
+      )
     },
     [request],
   )
+
+  /**
+   * 模型列表（D-29：**模型切换收进「重试」下拉**）。
+   *
+   * 为什么在这儿取而不是在 shell 里预取：换模型只在**不满意的时候**才发生，
+   * 而绝大多数改写一次就过了。放进启动路径就是为一件偶尔的事付常驻代价。
+   * 取失败就没有下拉——那时「重试」照常能按，只是用默认模型（降级不是坏事）。
+   */
+  const [models, setModels] = useState<AgentModel[]>([])
+  useEffect(() => {
+    if (stage !== 'result') return
+    void agent.listModels().then((result) => {
+      if (result.ok) setModels(result.value)
+    })
+  }, [stage])
 
   const stop = useCallback(() => {
     handle.current?.stop()
@@ -96,6 +116,8 @@ export function MarkupPanel(props: MarkupPanelProps): React.JSX.Element {
   }, [stage, stop, onClose])
 
   const verbs = useMemo(() => verbsFor(selectionKind), [selectionKind])
+  /** G5：动词列的键盘选中位。**只在输入框为空时有意义**——打了字动词就隐去了。 */
+  const [verbIndex, setVerbIndex] = useState(0)
   const revised = received.slice(0, reveal.revealed)
   const segments = useMemo(
     () => (stage === 'result' ? diffWords(selection, received) : []),
@@ -114,14 +136,33 @@ export function MarkupPanel(props: MarkupPanelProps): React.JSX.Element {
             disabled={selection === ''}
             onChange={(event) => setInstruction(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') submit(instruction)
+              // G5 键盘优先：**空输入时 ↑↓ 选动词、Enter 发**——
+              // 「⌘K → 上下选动词 → Enter → Enter 落笔 → Esc」这条链要全程不碰鼠标。
+              if (instruction === '' && verbs.length > 0 && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                event.preventDefault()
+                setVerbIndex((at) =>
+                  event.key === 'ArrowDown' ? (at + 1) % verbs.length : (at - 1 + verbs.length) % verbs.length,
+                )
+                return
+              }
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              // 空输入 + 选中了动词 → 发那个动词；否则发自由输入
+              if (instruction === '' && verbs.length > 0) submit(verbs[verbIndex]?.label ?? '')
+              else submit(instruction)
             }}
           />
           {/* 打字即隐藏动词（W6）——输入框里有字时，动词列就是噪声了 */}
           {instruction === '' && selection !== '' && (
             <div className="sepia-markup-verbs">
               {verbs.map((verb) => (
-                <button key={verb.id} type="button" onClick={() => submit(verb.label)}>
+                <button
+                  key={verb.id}
+                  type="button"
+                  data-sepia-markup-verb={verb.id}
+                  data-sepia-markup-verb-active={verbs[verbIndex]?.id === verb.id ? 'true' : 'false'}
+                  onClick={() => submit(verb.label)}
+                >
                   {verb.label}
                 </button>
               ))}
@@ -157,9 +198,31 @@ export function MarkupPanel(props: MarkupPanelProps): React.JSX.Element {
             <button type="button" onClick={onClose}>
               {t('markup.discard')}
             </button>
-            <button type="button" onClick={() => submit(instruction)}>
+            {/* **重试与换模型是同一个动作的两半**（D-29）：不满意才会想换脑子，
+                所以模型不占第一层的版面，收在重试旁边。 */}
+            <button type="button" data-sepia-markup-retry="" onClick={() => submit(instruction)}>
               {t('markup.retry')}
             </button>
+            {models.length > 0 && (
+              <select
+                className="sepia-markup-model"
+                data-sepia-markup-model=""
+                defaultValue=""
+                onChange={(event) => {
+                  const picked = models.find((it) => `${it.providerID}/${it.modelID}` === event.target.value)
+                  if (picked !== undefined) {
+                    submit(instruction, { providerID: picked.providerID, modelID: picked.modelID })
+                  }
+                }}
+              >
+                <option value="">{t('markup.model.retry')}</option>
+                {models.map((model) => (
+                  <option key={`${model.providerID}/${model.modelID}`} value={`${model.providerID}/${model.modelID}`}>
+                    {model.modelName}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           {/* F10 同线程追问：同一个 session 再来一轮，diff 更新 */}
           <input

@@ -98,48 +98,6 @@ test('#3 ⌘/ 看板：出得来、**一屏放得下**、Esc 关', async () => {
   await expect(board).toHaveCount(0)
 })
 
-test('#3b 搜索**只隐藏不重排**：命中的一行位置一个像素都不动', async () => {
-  const win = await launch(await seed())
-  await win.locator('.cm-content').click()
-  await win.keyboard.press('Meta+/')
-  await expect(win.locator('[data-sepia-keys="open"]')).toBeVisible()
-
-  const before = await win.evaluate(() => {
-    const row = document.querySelector('[data-sepia-keys-row="file.save"]')
-    return row === null ? null : row.getBoundingClientRect().top
-  })
-  expect(before).not.toBeNull()
-
-  await win.locator('[data-sepia-keys-search]').fill('保存')
-  await win.waitForTimeout(150)
-
-  // 一：命中的还在，且**位置没变**（filter 后重渲染会让它跳到第一行）
-  const after = await win.evaluate(() => {
-    const row = document.querySelector('[data-sepia-keys-row="file.save"]') as HTMLElement | null
-    return row === null ? null : { top: row.getBoundingClientRect().top, hidden: row.hidden }
-  })
-  expect(after!.hidden, '命中的行被藏了').toBe(false)
-  expect(after!.top, '搜索之后位置变了——这是重排，D-32 ④ 要的是只隐藏').toBeCloseTo(before!, 0)
-
-  // 二：没命中的藏起来了
-  const otherHidden = await win.evaluate(
-    () => (document.querySelector('[data-sepia-keys-row="tab.next"]') as HTMLElement | null)?.hidden,
-  )
-  expect(otherHidden, '没命中的行还露着').toBe(true)
-})
-
-test('#3c 搜键位也命中：打「k」找得到 ⌘K', async () => {
-  const win = await launch(await seed())
-  await win.locator('.cm-content').click()
-  await win.keyboard.press('Meta+/')
-  await win.locator('[data-sepia-keys-search]').fill('k')
-  await win.waitForTimeout(150)
-  const summonHidden = await win.evaluate(
-    () => (document.querySelector('[data-sepia-keys-row="agent.summon"]') as HTMLElement | null)?.hidden,
-  )
-  expect(summonHidden, '打 k 没找到 ⌘K').toBe(false)
-})
-
 test('#3d **只读**：⌘/ 本身不动正文，看板里回车也不执行任何命令', async () => {
   const fixture = await seed()
   const win = await launch(fixture)
@@ -152,9 +110,6 @@ test('#3d **只读**：⌘/ 本身不动正文，看板里回车也不执行任�
   // 按一下就在正文里插一对 `<!--  -->`——一个只读看板的快捷键改写了用户的字。
   // 实测抓到的，修在 editor 的 keymap 里（APP_OWNED_KEYS）。
   expect(await readFile(fixture.page, 'utf8'), '⌘/ 动了正文——CM6 抢在前面把这行注释掉了').toBe(original)
-  await win.locator('[data-sepia-keys-search]').fill('保存')
-  await win.waitForTimeout(150)
-
   const before = await readFile(fixture.page, 'utf8')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(500)

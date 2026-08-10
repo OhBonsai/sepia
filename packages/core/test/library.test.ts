@@ -8,6 +8,7 @@ import {
   matchRefs,
   pruneEmptyDirs,
   pushRecent,
+  referencedPages,
   titleOf,
   type RefCandidate,
   type TreeEntry,
@@ -141,17 +142,25 @@ describe('recents', () => {
 })
 
 describe('图片落点', () => {
-  it('img/<yyMMddHHmm>-<原名>：时间戳在前（天然按时间排），原名在后（还认得出）', () => {
+  it('assets/<yyMMddHHmm>-<原名>：时间戳在前（天然按时间排），原名在后（还认得出）', () => {
     const target = imageTarget('照片.png', new Date(2026, 7, 6, 21, 5).getTime())
-    expect(target).toBe('img/2608062105-照片.png')
+    expect(target).toBe('assets/2608062105-照片.png')
   })
 
   it('空格与特殊字符替成连字符——否则 markdown 链接会断', () => {
-    expect(imageTarget('my photo (1).png', 0)).toMatch(/^img\/\d{10}-my-photo-1-.png$|^img\/\d{10}-my-photo-1.png$/)
+    expect(imageTarget('my photo (1).png', 0)).toMatch(/^assets\/\d{10}-my-photo-1-?\.png$/)
   })
 
-  it('名字被清空时兜一个 image，不产生 `img/2608-`', () => {
+  it('名字被清空时兜一个 image，不产生 `assets/2608-`', () => {
     expect(imageTarget('***', 0)).toMatch(/-image$/)
+  })
+
+  it('**目录可配**（D-40）：换成别的目录，落点跟着走', () => {
+    expect(imageTarget('a.png', 0, 'img')).toMatch(/^img\/\d{10}-a\.png$/)
+    // 两侧的斜杠都容忍——用户在设置里填 `/pics/` 是常事
+    expect(imageTarget('a.png', 0, '/pics/')).toMatch(/^pics\//)
+    // 填空了退回默认，不产生 `/2608-a.png` 这种落在 book 根的东西
+    expect(imageTarget('a.png', 0, '')).toMatch(/^assets\//)
   })
 })
 
@@ -202,5 +211,24 @@ describe('空目录摘除（真人轮撞出来的，§2.9 条目 4）', () => {
   it('顶层的 md 一律留下', () => {
     const entries = [entry('top.md', 0), entry('junk', 0, 'dir')]
     expect(pruneEmptyDirs(entries).map((row) => row.path)).toEqual(['top.md'])
+  })
+})
+
+describe('正文里引用到的 page（缺口 #4 / C4）', () => {
+  it('抽出相对路径的 .md，按出现先后去重', () => {
+    const text = '见 [甲](a.md)，又见 [甲](a.md)，还有 [乙](notes/b.md)。\n'
+    expect(referencedPages(text)).toEqual(['a.md', 'notes/b.md'])
+  })
+
+  it('`./` 前缀算同一篇', () => {
+    expect(referencedPages('[甲](./a.md) [甲again](a.md)')).toEqual(['a.md'])
+  })
+
+  it('**外链与绝对路径都不收**——外链归内嵌浏览器，绝对路径不该出现在 book 内引用里', () => {
+    expect(referencedPages('[外](https://x.com/a.md) [绝](/tmp/a.md)')).toEqual([])
+  })
+
+  it('图片与非 md 不收', () => {
+    expect(referencedPages('![图](assets/x.png) [表](data.csv)')).toEqual([])
   })
 })

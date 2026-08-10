@@ -435,68 +435,6 @@ body {
 
 /* box-sizing：内边距算进版心里。不加的话 max-width:760 + padding:24 = 808，
    主页就比正文宽出一圈——版心这条约定要在两处都成立才叫约定。 */
-.sepia-home {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 64px 24px;
-}
-
-.sepia-home-actions { display: flex; gap: 8px; }
-
-.sepia-home button {
-  padding: 6px 14px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--sepia-ink);
-  background: transparent;
-  border: 1px solid var(--sepia-rule);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.sepia-home-label { font-size: 12px; color: var(--sepia-ink-muted); }
-.sepia-home-recent { padding: 4px 0; font-size: 14px; cursor: pointer; }
-.sepia-home-recent:hover { color: var(--sepia-syn-link); }
-
-/* `@` 引用浮层（170 §2.1 ④）：贴着正文出现的一小列，不是对话框。 */
-/* **位置由内联 style 给**（贴着光标，见 refs.tsx）——这里只管长相。
-   钉在窗口底部中央是错的：那是命令面板的位置，不是行内浮层的位置。 */
-.sepia-refs {
-  position: fixed;
-  z-index: 20;
-  max-height: 40vh;
-  padding: 4px;
-  overflow-y: auto;
-  background: var(--sepia-paper);
-  border: 1px solid var(--sepia-rule);
-  border-radius: 4px;
-}
-
-.sepia-ref {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 4px 8px;
-  font-size: 13px;
-  cursor: pointer;
-  border-radius: 4px;
-}
-
-.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
-.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
-
-/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
-.sepia-links-list {
-  padding: 4px 0 0 0;
-  font-size: 12px;
-  color: var(--sepia-ink-muted);
-}
-
 /* ── 保存微反馈（D-30）─────────────────────────────────────────────────
    与警示点**同族同位**：成功淡一下就走，失败留着不动。同一处视线回答
    "存上了没有"，不必再学第二个位置。600ms 由 JS 计时（CSS 只管观感）。 */
@@ -693,4 +631,821 @@ body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* ── P0 · Tab 栏终态（原型 Page 页 Layout）──────────────────────────────
+   ⌂ │ 文件 tab（■脏标 ×关闭）… │ ＋ │ ▤
+   ⌂ 与文件 tab 用**同一套高亮**：主页是个可以停留的地方，不是一个按钮。 */
+.sepia-tab-home,
+.sepia-tab-add,
+.sepia-tab-status {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+}
+
+.sepia-tab-home[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  border-bottom-color: var(--sepia-ink);
+}
+
+.sepia-tab-home:hover,
+.sepia-tab-add:hover,
+.sepia-tab-status:hover {
+  color: var(--sepia-ink);
+}
+
+/* 把 ▤ 顶到最右：中间填一段弹性空白，不给它 margin-left:auto——
+   那样在 tab 溢出滚动时它会跟着滚走。 */
+.sepia-tabs-spacer {
+  flex: 1;
+  min-width: 12px;
+}
+
+.sepia-tab-status[data-sepia-tab-status-badge='true']::after {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 3px;
+  vertical-align: super;
+  content: '';
+  background: var(--sepia-danger);
+  border-radius: 50%;
+}
+
+/* **脏标与关闭同一个位置**：平时 ■，悬停变 ×。
+   两个都常驻的话，一排 tab 右边全是小东西。 */
+.sepia-tab-dirty-mark {
+  font-size: 8px;
+  opacity: 0;
+}
+
+.sepia-tab[data-sepia-tab-dirty='true'] .sepia-tab-dirty-mark {
+  opacity: 0.75;
+}
+
+.sepia-tab-close-mark {
+  display: none;
+}
+
+.sepia-tab:hover .sepia-tab-dirty-mark {
+  display: none;
+}
+
+.sepia-tab:hover .sepia-tab-close-mark {
+  display: inline;
+}
+
+/* ── P0 · 纸顶三图标 ───────────────────────────────────────────────────
+   ▤ 属性在纸里行内展开，🔗 连接与 💬 对话开右侧面板——去处不同是有意的。 */
+.sepia-paper-top {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  width: min(760px, 100%);
+  padding: 14px 0 6px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-paper-name {
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-paper-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.sepia-paper-icon {
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  opacity: 0.6;
+}
+
+.sepia-paper-icon:hover,
+.sepia-paper-icon[data-sepia-paper-icon-on='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  opacity: 1;
+}
+
+/* ── P0 · 右侧区：一个位置，三种占用者互斥 ─────────────────────────── */
+.sepia-rightbar {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--sepia-rule);
+}
+
+/* 中缝**自己就是把手**，不额外画竖线——多一根线多一道噪声。 */
+.sepia-rightbar-seam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 5;
+  width: 7px;
+  cursor: col-resize;
+}
+
+.sepia-rightbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-rightbar-head button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-rightbar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── P6 · ▤ 状态浮层（F20）────────────────────────────────────────── */
+.sepia-status {
+  position: fixed;
+  top: 34px;
+  right: 12px;
+  z-index: 35;
+  width: 300px;
+  padding: 10px 12px;
+  font-size: 12px;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-status-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-status-tabs button {
+  padding: 2px 8px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+}
+
+.sepia-status-tabs button[data-sepia-status-tab-active='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+}
+
+.sepia-status-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.sepia-status-hint {
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-status-empty {
+  padding: 6px 0;
+  line-height: 1.6;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sepia-ink-muted);
+}
+
+.sepia-status-dot[data-sepia-status-engine='ready'] {
+  background: var(--sepia-syn-keyword);
+}
+
+.sepia-status-dot[data-sepia-status-engine='absent'] {
+  background: var(--sepia-danger);
+}
+
+/* ── P1 · `/` 组件菜单（F4）与 markup 模型下拉 ───────────────────────
+   `/` 菜单与 `@` 选择器共用同一套形态：贴光标、↑↓ 选、Enter 插——
+   在用户眼里它们是同一件事（行内敲个符号，弹一列东西）。 */
+.sepia-slash {
+  position: fixed;
+  z-index: 30;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-slash-item {
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.sepia-slash-item[data-sepia-slash-active='true'] {
+  background: var(--sepia-surface);
+}
+
+.sepia-markup-model {
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+/* mermaid 真渲染（F5）。失败时退回源码 + 一行错——图表语法写错是常事，
+   崩掉或静静空白都比"告诉你哪儿错了"糟。 */
+.sepia-textdiagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.sepia-textdiagram-error {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--sepia-danger);
+}
+
+/* ── 恢复：`@` 选择器与更新链接清单 ─────────────────────────────────
+   （190 P2 重写主页样式时，我按注释边界整段切，把这两块一并切掉了。
+   `#9` 当场红：`@` 浮层横向偏了 320px——position:fixed 没了，它退回文档流。） */
+.sepia-refs {
+  position: fixed;
+  z-index: 20;
+  max-height: 40vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-ref {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-ref[data-sepia-ref-active='true'] { background: var(--sepia-surface); }
+.sepia-ref-path { font-size: 11px; color: var(--sepia-ink-muted); }
+
+/* 更新链接的清单（T-31）：**执行前先摊开**——要改谁、改几处，看得见才敢点。 */
+.sepia-links-list {
+  padding: 4px 0 0 0;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+/* ── P2 · 主页终态（原型 Home Layout）─────────────────────────────────
+   左栏 220px（workspace 列表 + 设置/帮助）｜ 主区（搜索 + 最近笔记流）。
+   **主页也是纸**：同一套字，没有插画、没有卡片网格。 */
+.sepia-home {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sepia-home-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 220px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 8px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-side-head button,
+.sepia-home-side-foot button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-home-books {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sepia-home-book {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.sepia-home-book[data-sepia-home-book-current='true'],
+.sepia-home-book:hover {
+  background: var(--sepia-surface);
+}
+
+/* 字母头像方块：**取首字不转写**——中文名转拼音首字母会挤成一堆看不出区别 */
+.sepia-home-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+.sepia-home-side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding-top: 8px;
+  font-size: 13px;
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-main {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 40px;
+  overflow-y: auto;
+}
+
+.sepia-home-search {
+  width: 100%;
+  max-width: 720px;
+  padding: 7px 10px;
+  color: var(--sepia-ink);
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-home-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  max-width: 720px;
+  padding-bottom: 6px;
+  margin: 26px 0 6px;
+  font-size: 13px;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-home-label button {
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sepia-home-recent {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 720px;
+  padding: 5px 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-home-recent:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-home-recent-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sepia-home-recent-time {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-empty {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 24px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-home-empty button {
+  padding: 4px 10px;
+  color: var(--sepia-ink);
+  cursor: pointer;
+  background: var(--sepia-surface);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* ── P3 · 设置浮层（S1–S5）──────────────────────────────────────────
+   **盖在当前界面上，不是独立路由页**——关掉就回到关闭前那张纸。 */
+.sepia-set-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sepia-scrim);
+}
+
+.sepia-set {
+  display: flex;
+  width: min(940px, 92vw);
+  height: min(640px, 86vh);
+  overflow: hidden;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+.sepia-set-nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 190px;
+  padding: 14px 8px;
+  overflow-y: auto;
+  border-right: 1px solid var(--sepia-rule);
+}
+
+/* 一级是**小灰字不可点**（S2）：它是分组标题，不是路由 */
+.sepia-set-group-title {
+  padding: 12px 8px 4px;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-set-nav-item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--sepia-ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.sepia-set-nav-item[data-sepia-set-page-active='true'],
+.sepia-set-nav-item:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-set-foot {
+  padding: 12px 8px 0;
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-body {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 22px;
+  overflow-y: auto;
+}
+
+/* 三级分组标题带下划线（原型 Layout） */
+.sepia-set-section-title {
+  padding-bottom: 4px;
+  margin: 18px 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sepia-ink-muted);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  background: var(--sepia-surface);
+  border-radius: 4px;
+}
+
+.sepia-set-row[data-sepia-set-item-pending='true'] {
+  opacity: 0.5;
+}
+
+.sepia-set-row-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.sepia-set-row-desc {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-set-row-control input,
+.sepia-set-row-control select {
+  padding: 2px 6px;
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 3px;
+}
+
+.sepia-set-pending {
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+/* S4「新」角标 */
+.sepia-set-new {
+  padding: 0 4px;
+  margin-left: 6px;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--sepia-syn-function);
+  border: 1px solid var(--sepia-syn-function);
+  border-radius: 2px;
+}
+
+/* ── P4 · ▤ 属性表（F8）：**行内展开**，它是纸最上面那几行的另一个画法 ──── */
+.sepia-meta {
+  width: min(760px, 100%);
+  padding: 10px 0;
+  margin: 0 auto;
+  font-size: 13px;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-meta-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+/* 等宽键 + 值（F8 原文）：键对齐了，一列扫下去才读得快 */
+.sepia-meta-key {
+  flex: none;
+  width: 84px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-meta-value {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  color: var(--sepia-ink);
+  cursor: text;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.sepia-meta-value:hover {
+  border-color: var(--sepia-rule);
+}
+
+.sepia-meta-blank {
+  font-style: normal;
+  color: var(--sepia-ink-muted);
+  opacity: 0.5;
+}
+
+/* ── P5 · 连接面板（F17）· 双屏（F16）· 阅读模式（F18/D-39）───────────── */
+.sepia-linkspanel {
+  padding: 8px;
+}
+
+.sepia-link-row {
+  padding: 7px 8px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sepia-link-row:hover {
+  background: var(--sepia-surface);
+}
+
+.sepia-link-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.sepia-link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 位置标注（第 N 段 / 末段 / 外链）——只给一列路径的话，
+   用户还得回正文里翻一遍才知道那是哪句话 */
+.sepia-link-where {
+  flex: none;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-link-excerpt {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-links-empty,
+.sepia-reader-note,
+.sepia-split-note {
+  padding: 14px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--sepia-ink-muted);
+}
+
+.sepia-reader-note button,
+.sepia-reader button {
+  display: block;
+  margin-top: 10px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+/* 阅读模式：**按 Sepia 自己的排版呈现**——它不是一个浏览器，是一篇文章 */
+.sepia-reader {
+  padding: 16px 18px;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.sepia-reader-title {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.sepia-reader-url {
+  margin-bottom: 14px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  text-overflow: ellipsis;
+}
+
+.sepia-split {
+  height: 100%;
+}
+
+/* ── P6 · F19 Agent 状态点（分镜 0）───────────────────────────────────
+   **角落一枚小点**：启动中灰、就绪实心、缺席红。D-30 否掉了常驻底栏，
+   但没否掉这一枚点——它是"Agent 在不在"唯一需要常驻的那一个字节的信息。 */
+.sepia-engine-dot {
+  position: fixed;
+  right: 10px;
+  bottom: 26px;
+  z-index: 9;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--sepia-ink-muted);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.sepia-engine-dot[data-sepia-engine-dot='ready'] {
+  background: var(--sepia-ink-muted);
+  opacity: 0.75;
+}
+
+.sepia-engine-dot[data-sepia-engine-dot='absent'] {
+  background: var(--sepia-danger);
+  border-color: var(--sepia-danger);
+  opacity: 0.9;
+}
+
+/* ── P7 · 纸是一张卡片（原型逐屏对照）───────────────────────────────────
+   原型里纸**浮在一层更深的底上**，四周留白、4px 圆角；不是满幅铺开。
+   这是**布局与结构**（P7 对的正是它），不是配色——底色仍走 --sepia-* 那套，
+   圆角 4px、**无阴影**（Stage 2 已裁的 opencode 式克制）。 */
+.sepia-body {
+  background: var(--sepia-surface);
+}
+
+.sepia-paper-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 10px;
+  overflow-y: auto;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* 右栏也是一张卡片，与纸并排——中缝因此是两张卡之间的那道空隙 */
+.sepia-rightbar {
+  margin: 10px 10px 10px 0;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: 4px;
+}
+
+/* 树在卡片之外——它属于"窗口"，不属于"纸" */
+.sepia-tree {
+  background: none;
+}
+
+/* 设置页：**一个三级分组 = 一张卡片**，行与行之间是细线，
+   不是每行各自一张卡（原型 W19 的排布）。 */
+.sepia-set-section > .sepia-set-row {
+  margin-bottom: 0;
+  border-radius: 0;
+}
+
+.sepia-set-section > .sepia-set-row + .sepia-set-row {
+  border-top: 1px solid var(--sepia-rule);
+}
+
+.sepia-set-section > .sepia-set-row:first-of-type {
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.sepia-set-section > .sepia-set-row:last-child {
+  margin-bottom: 14px;
+  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 4px;
 }

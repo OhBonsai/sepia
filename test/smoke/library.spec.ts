@@ -92,14 +92,27 @@ test('#8 主页：无 tab 时出现，两条路都在；有 book 时最近列表
   await expect(win.locator('[data-sepia-home]')).toBeVisible()
   await expect(win.locator('[data-sepia-home-action="book"]')).toBeVisible()
   await expect(win.locator('[data-sepia-home-action="page"]')).toBeVisible()
-  // **主页也是纸**：版心与正文同宽，不是卡片网格
-  const box = await win.locator('.sepia-home').boundingBox()
-  expect(box!.width).toBeLessThanOrEqual(760)
+  // **主页也是纸**：内容栏与正文同宽，不是卡片网格。
+  // 量的是**内容栏**而不是整个主页——P2 起主页按原型是两栏满宽（左栏 220px +
+  // 主区），把 760 套在整扇窗上等于要求主页不许有左栏。
+  const box = await win.locator('[data-sepia-home-search]').boundingBox()
+  expect(box!.width, '主页内容栏比正文还宽——它开始像个仪表盘了').toBeLessThanOrEqual(760)
+
+  // 左栏在，且 workspace 列表与设置/帮助都有位置（H1/H6/H7）
+  await expect(win.locator('.sepia-home-side')).toBeVisible()
+  await expect(win.locator('[data-sepia-home-action="settings"]')).toBeVisible()
 })
 
 test('#7 文件树：列出 book 里的 md，点击开 tab', async () => {
   const fixture = await makeBook()
-  const win = await launch(fixture, { version: 2, book: fixture.book, tabs: [], active: 0 })
+  // **开着一个 tab**：P2 起文件树属于 Page 页，主页有它自己的左栏（workspace 列表）。
+  // 两个左栏并排是原型里没有的东西。
+  const win = await launch(fixture, {
+    version: 2,
+    book: fixture.book,
+    tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }],
+    active: 0,
+  })
 
   const tree = win.locator('.sepia-tree')
   await expect(tree).toBeVisible()
@@ -119,7 +132,7 @@ test('#7b 文件树超限 → **降级为只列顶层，并且说出来**', asyn
   // 上限调到 5：fixture 有 30+ 个文件，必然触发降级
   const win = await launch(
     fixture,
-    { version: 2, book: fixture.book, tabs: [], active: 0 },
+    { version: 2, book: fixture.book, tabs: [{ page: 'a.md', cursor: 0, scrollTop: 0 }], active: 0 },
     { libraryTreeEntryLimit: 5 },
   )
 
@@ -255,7 +268,7 @@ async function fireImageEvent(win: Page, kind: 'paste' | 'drop', name: string): 
   )
 }
 
-test('#10 **粘贴**一张图 → 落 img/ + 插 `![]()`，原字节只增不改', async () => {
+test('#10 **粘贴**一张图 → 落 assets/ + 插 `![]()`，原字节只增不改', async () => {
   const fixture = await makeBook()
   const win = await launch(fixture, {
     version: 2,
@@ -269,18 +282,18 @@ test('#10 **粘贴**一张图 → 落 img/ + 插 `![]()`，原字节只增不改
 
   await fireImageEvent(win, 'paste', 'shot.png')
 
-  // 一：正文里插了 `![](img/…)`
+  // 一：正文里插了 `![](assets/…)`
   await expect
     .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
       timeout: 10_000,
     })
-    .toMatch(/!\[]\(img\/\d{10}-shot\.png\)/)
+    .toMatch(/!\[]\(assets\/\d{10}-shot\.png\)/)
 
   // 二：图**真的落在盘上**，且字节原样（1x1 PNG 的头四字节）
   const { readdir } = await import('node:fs/promises')
-  const names = await readdir(join(fixture.book, 'img'))
-  expect(names, 'img/ 里没东西——收图那条路没走通').toHaveLength(1)
-  const bytes = await readFile(join(fixture.book, 'img', names[0]!))
+  const names = await readdir(join(fixture.book, 'assets'))
+  expect(names, 'assets/ 里没东西——收图那条路没走通').toHaveLength(1)
+  const bytes = await readFile(join(fixture.book, 'assets', names[0]!))
   expect([...bytes.subarray(0, 4)], '落盘的不是 PNG 字节').toEqual([0x89, 0x50, 0x4e, 0x47])
 })
 
@@ -301,9 +314,9 @@ test('#10b **拖拽**一张图 → 同一条路（Electron 43 上 File.path 已�
     .poll(async () => win.evaluate(() => document.querySelector('.cm-content')?.textContent ?? ''), {
       timeout: 10_000,
     })
-    .toContain('](img/')
+    .toContain('](assets/')
   const { readdir } = await import('node:fs/promises')
-  expect(await readdir(join(fixture.book, 'img'))).toHaveLength(1)
+  expect(await readdir(join(fixture.book, 'assets'))).toHaveLength(1)
 })
 
 test('#10c 拖别的一切**静默无效**：正文一个字节不变，img/ 不冒出来', async () => {
@@ -328,7 +341,7 @@ test('#10c 拖别的一切**静默无效**：正文一个字节不变，img/ 不
 
   expect(await readFile(join(fixture.book, 'a.md'), 'utf8')).toBe(before)
   const { readdir } = await import('node:fs/promises')
-  expect(await readdir(fixture.book).then((n) => n.includes('img'))).toBe(false)
+  expect(await readdir(fixture.book).then((n) => n.includes('assets'))).toBe(false)
 })
 
 test('#5 更新链接：只查不改 → 用户点了才改，且只改指向旧路径的', async () => {
@@ -383,8 +396,10 @@ test('#7c 没有 .md 的文件夹作 book → **说人话**，不是两个哑目
   // 一：**一个哑目录行都没有**——没有 md 的目录不进树
   await expect(win.locator('[data-sepia-tree-kind="dir"]'), '空目录还在树里').toHaveCount(0)
   await expect(win.locator('[data-sepia-tree-kind="file"]')).toHaveCount(0)
-  // 二：**说了人话**，而不是留一片空白让人以为坏了
-  await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible()
+  // 二：**说了人话**，而不是留一片空白让人以为坏了。
+  // P2 之后这句话归**主页**：一个 .md 都没有的 book，用户就停在主页，
+  // 树的空态他一辈子看不到——而这正是最需要这句话的时刻。
+  await expect(win.locator('[data-sepia-tree-notice="empty"]')).toBeVisible({ timeout: 8_000 })
 })
 
 test('#8b 关掉所有 tab → 点最近的**游离** page → 真的打开（不是"打不开这个文件"）', async () => {
@@ -442,7 +457,7 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
 
   await expect.poll(async () => readFile(join(fixture.book, 'a.md'), 'utf8').catch(() => ''), {
     timeout: 10_000,
-  }).toContain('](img/')
+  }).toContain('](assets/')
   // 真人轮的事故形态：`![](img/…)# 访问控制管理办法` —— 标题当场废掉
   const text = await win.evaluate(
     () => (document.querySelector('.cm-content') as HTMLElement | null)?.innerText ?? '',
@@ -463,7 +478,7 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
   await win.keyboard.press('Meta+ArrowRight')
   await fireImageEvent(win, 'paste', 'second.png')
   await expect.poll(async () => {
-    const names = await (await import('node:fs/promises')).readdir(join(fixture.book, 'img'))
+    const names = await (await import('node:fs/promises')).readdir(join(fixture.book, 'assets'))
     return names.length
   }, { timeout: 10_000 }).toBe(2)
   const after = await win.evaluate(
@@ -476,6 +491,9 @@ test('#10d 收进来的图**自成一行**：不许挤进别人行里', async ()
 
 test('#10e 图片预览**真的画出了像素**（不是只挂了个 <img> 标签）', async () => {
   const fixture = await makeBook()
+  // **故意仍用 `img/`**：写入侧的默认值已按 D-40 改成 `assets/`，
+  // 而 D-40 的实现约束是「读取侧一律按 md 里的实际相对路径解析」——
+  // 换默认值不许让既有的 `img/` 旧图失效。这条 fixture 就是那句话的实证。
   await mkdir(join(fixture.book, 'img'), { recursive: true })
   // 一张 2x2 的真 PNG——尺寸小但**非零**，这正是要断言的东西
   await writeFile(

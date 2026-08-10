@@ -5,15 +5,23 @@ import {
   EMPTY_SESSION,
   type RefCandidate,
   closeTab,
+  DEFAULT_CONFIG,
   createAnchor,
+  keyCaps,
+  setMetaField,
+  referencedPages,
   markupReport,
   openTab,
   tabPath,
   tabRelative,
   updateTab,
+  type AppConfig,
+  type CopyKey,
   type EngineStatus,
   type MarkupRun,
   type RetryHandle,
+  type Rightbar as RightbarState,
+  openRight,
   retryWithBackoff,
   shouldInterceptClose,
   type SessionState,
@@ -45,9 +53,22 @@ import { Home } from '../library/home.tsx'
 import { RefPicker, refLink } from '../library/refs.tsx'
 import { createThreadStore, type ThreadStore } from '../threads/index.ts'
 import { ThreadPanel } from '../threads/panel.tsx'
+import type { ContextBlock } from '@sepia/agent/tasks'
+
 import { entries as commandEntries, execute, registerCommand } from '../commands/registry.ts'
+import { useFileCommands } from '../files/commands.ts'
 import { Cheatsheet } from './cheatsheet.tsx'
 import { InfoOverlay } from './info.tsx'
+import { SlashMenu, type SlashItem } from '../editor/slash.tsx'
+import { SplitEditor } from '../editor/split.tsx'
+import { LinksPanel } from '../library/links.tsx'
+import { Reader } from '../library/reader.tsx'
+import { MetaTable } from './meta.tsx'
+import { PaperTop } from './papertop.tsx'
+import { Settings } from './settings.tsx'
+import { StatusOverlay } from './status.tsx'
+import { Rightbar } from './rightbar.tsx'
+import { Tabs } from './tabs.tsx'
 import { agent } from '../services/agent-bridge.ts'
 import { api } from '../services/api.ts'
 
@@ -70,6 +91,13 @@ const SESSION_DEBOUNCE_MS = 500
 
 /** ⌘K 状态文案停留时长。它是提示不是面板——自己消失，不用关。 */
 const K_HINT_MS = 2_500
+
+/** 状态点的 title 文案。显式表，不拼串（纪律 5）。 */
+const ENGINE_DOT: Record<EngineStatus, CopyKey> = {
+  starting: 'status.engine.starting',
+  ready: 'status.engine.ready',
+  absent: 'status.engine.absent',
+}
 
 export function App(): React.JSX.Element {
   const [status, setStatus] = useState<Status>('loading')
@@ -109,6 +137,10 @@ export function App(): React.JSX.Element {
    */
   const [editorEpoch, setEditorEpoch] = useState(0)
   const [keysOpen, setKeysOpen] = useState(false)
+  /** ⌘, 设置浮层（P3）。 */
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  /** 全量 config。设置页读它、改它；**改完立刻生效**，不必重启。 */
+  const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [infoOpen, setInfoOpen] = useState(false)
   /** 拦截关闭的确认框（架构 §4.9 的**唯一例外**）。null = 没在拦。 */
   const [closeBlocked, setCloseBlocked] = useState(false)
@@ -119,7 +151,19 @@ export function App(): React.JSX.Element {
   // Stage 5b：线程与徽章。**去向是算出来的**（core 的 placeThreads），这里只存算完的结果。
   const threadStore = useRef<ThreadStore | null>(null)
   const [threadView, setThreadView] = useState<ThreadView>({ badges: [], orphans: [] })
-  const [panelOpen, setPanelOpen] = useState(false)
+  /**
+   * 右侧区（190 P0）。**一个位置，三种占用者互斥**——语义在 core 的 `openRight`。
+   * 原来的 `panelOpen` 是个 boolean，只能表达"对话面板开没开"；
+   * 连接面板与 @ 双屏进来之后，三个 boolean 会有八种组合、其中五种非法。
+   */
+  const [rightbar, setRightbar] = useState<RightbarState>(null)
+  const [rightWidth, setRightWidth] = useState(360)
+  /** 用户点了 ⌂：有 tab 也停在主页。**主页是个可以停留的地方**，不只是空态。 */
+  const [atHome, setAtHome] = useState(false)
+  /** ▤ 属性表展开与否（P4 填内容）。 */
+  const [metaOpen, setMetaOpen] = useState(false)
+  /** ▤ 状态浮层（P6 填内容）。 */
+  const [statusOpen, setStatusOpen] = useState(false)
   /** 侧边栏（⌘B）。**可全收起**——收起时纸就是整扇窗（§2.1 ②）。 */
   const [sidebarOpen, setSidebarOpen] = useState(true)
   /**
@@ -127,7 +171,24 @@ export function App(): React.JSX.Element {
    * 标题后台补，补好之前按纯文件名匹配（**那是常态路径，不是降级**）。
    */
   const [refCandidates, setRefCandidates] = useState<RefCandidate[]>([])
+  /**
+   * 正文里引用到的旧文内容（185 缺口 #4 / C4，分镜 9「这次 markup 的对话可带该文做
+   * context」）。组装器从 Stage 4 起就认 `at-content` 块，**缺的一直是喂进去这一环**。
+   *
+   * 上限三篇：预算截断在组装器里本来就有，但读盘发生在它之前——
+   * 一篇正文引了二十篇旧文时，读那二十个文件的代价是白付的。
+   */
+  const [refContents, setRefContents] = useState<ContextBlock[]>([])
   const [refState, setRefState] = useState<{
+    from: number
+    query: string
+    anchor: { left: number; top: number; bottom: number } | null
+  } | null>(null)
+  /**
+   * `/` 组件菜单（F4）。**只在空行触发**——正文里写 `and/or` 不该弹菜单出来。
+   * 形态与 `@` 共用：贴光标、↑↓ 选、Enter 插、Esc 关。
+   */
+  const [slashState, setSlashState] = useState<{
     from: number
     query: string
     anchor: { left: number; top: number; bottom: number } | null
@@ -322,7 +383,7 @@ export function App(): React.JSX.Element {
       store.dispose()
       threadStore.current = null
       setThreadView({ badges: [], orphans: [] })
-      setPanelOpen(false)
+      setRightbar(null)
     }
   }, [page])
 
@@ -396,6 +457,16 @@ export function App(): React.JSX.Element {
     void api.setSession(next)
   }, [withCurrentPosition])
 
+  /**
+   * 当前 page 路径的 ref。
+   * 命令上下文是个**每次调用都现取**的函数（`context()`），挂 state 会让它一直
+   * 停在注册那一刻的值——四条文件命令会永远对着第一张纸操作。
+   */
+  const pageRef = useRef<string | null>(null)
+  useEffect(() => {
+    pageRef.current = page?.path ?? null
+  }, [page])
+
   /** 重命名/移动之后查一遍引用。**只查不改**，查到了才出横条。 */
   const checkLinks = useCallback(async (from: string, to: string): Promise<void> => {
     const book = sessionRef.current.book
@@ -445,6 +516,38 @@ export function App(): React.JSX.Element {
     // `page` 必须进依赖：其余取值都走 ref，只有换行符来自 state——
     // 空依赖数组会让它永远停在第一张纸的换行符上
   }, [page])
+
+  /**
+   * 把正文里引用到的 page 读进来，备作 `@content`。
+   * 随正文变（防抖跟着 threadStore 那一拍走），**不进启动同步路径**（纪律 12）。
+   */
+  useEffect(() => {
+    const book = session.book
+    if (page === null || book === null) {
+      setRefContents([])
+      return undefined
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void (async () => {
+        const targets = referencedPages(page.body).slice(0, 3)
+        const blocks: ContextBlock[] = []
+        for (const [index, target] of targets.entries()) {
+          const read = await api.readFile(tabPath(book, target))
+          if (read.ok) {
+            // distance 从 10 起：**永远排在选区与邻近段落之后**——
+            // 引用的旧文是佐料，不该把正文自己的上下文挤出预算
+            blocks.push({ kind: 'at-content', text: read.value, distance: 10 + index })
+          }
+        }
+        if (!cancelled) setRefContents(blocks)
+      })()
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [page, session.book])
 
   // 候选表随 book 建。**扫描在挂载后异步跑**（纪律 12），标题再异步补一轮。
   useEffect(() => {
@@ -630,6 +733,37 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
+  /**
+   * 四条文件命令（新建/改名/移动/删除）。
+   *
+   * **Stage 8 开工时发现它们从来没被注册过**：`files/commands.ts` 定义了
+   * `useFileCommands`，而 renderer 里**没有任何地方 import 它**。于是 ⌘⌫ 与树右键
+   * 都在调一个不存在的命令——`execute` 对未知 id 静默返回，所以一路无声。
+   * 6b 人工轮第 6 项「⌘⌫ 删除 → 废纸篓里找到」当时判了通过，但按代码它不可能工作。
+   * 现在补上注册，并加了 `check:commands` 守住这一类（execute 的 id 必须注册过）。
+   */
+  useFileCommands(
+    useCallback(
+      () => ({
+        book: sessionRef.current.book,
+        page: pageRef.current,
+        onOpen: (path: string) => void openInTab(path),
+        onGone: () => {
+          setPage(null)
+          setRightbar(null)
+        },
+        onMoved: (from: string, to: string) => void checkLinks(from, to),
+      }),
+      [openInTab, checkLinks],
+    ),
+  )
+
+  useEffect(() => {
+    void api.config.get().then((result) => {
+      if (result.ok) setAppConfig(result.value)
+    })
+  }, [])
+
   // 命令先注册再绑键，按钮也走 execute（纪律 6）
   useEffect(() => {
     // `save` 现在会交出成对 commit 的两点（5b），命令层不关心它——丢掉返回值即可
@@ -671,12 +805,88 @@ export function App(): React.JSX.Element {
       when: needsPage,
       run: summon,
     })
+    // ── F2 标准快捷键集（D-26）。键位在 CM6 的 keymap 里（那才抢得过它自己的表），
+    // 这里注册命令是为了让 ⌘/ 看板与设置快捷键页有同一份数据源（T-03）。
+    const fmt = (
+      id: string,
+      title: CopyKey,
+      key: string,
+      run: (instance: MountedEditor) => void,
+    ): void => {
+      registerCommand({
+        id,
+        title,
+        key,
+        group: 'inline',
+        when: (context) => context.hasPage && !context.markupOpen,
+        run: () => {
+          const instance = editor.current
+          if (instance !== null) run(instance)
+        },
+      })
+    }
+    fmt('format.bold', 'cmd.format.bold', 'Mod-b', (it) => it.format.bold())
+    fmt('format.italic', 'cmd.format.italic', 'Mod-i', (it) => it.format.italic())
+    fmt('format.code', 'cmd.format.code', 'Mod-e', (it) => it.format.code())
+    fmt('format.link', 'cmd.format.link', 'Mod-Shift-k', (it) => it.format.link())
+    for (const level of [1, 2, 3, 4, 5, 6] as const) {
+      fmt(`format.h${String(level)}`, `cmd.format.h${String(level)}` as CopyKey, `Mod-${String(level)}`, (it) =>
+        it.format.heading(level),
+      )
+    }
+    fmt('format.body', 'cmd.format.body', 'Mod-0', (it) => it.format.heading(0))
+    registerCommand({
+      id: 'format.codeBlock',
+      title: 'cmd.format.codeblock',
+      key: 'Mod-Alt-c',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.codeBlock(),
+    })
+    registerCommand({
+      id: 'format.quote',
+      title: 'cmd.format.quote',
+      key: 'Mod-Alt-q',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.quote(),
+    })
+    registerCommand({
+      id: 'format.bullet',
+      title: 'cmd.format.bullet',
+      key: 'Mod-Alt-u',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.bullet(),
+    })
+    registerCommand({
+      id: 'format.ordered',
+      title: 'cmd.format.ordered',
+      key: 'Mod-Alt-o',
+      group: 'block',
+      when: (context) => context.hasPage && !context.markupOpen,
+      run: () => editor.current?.format.ordered(),
+    })
+
     registerCommand({
       id: 'view.keys',
       title: 'cmd.keys.board',
       key: 'Mod-/',
       group: 'file',
       run: () => setKeysOpen((shown) => !shown),
+    })
+    registerCommand({
+      id: 'view.settings',
+      title: 'cmd.settings',
+      key: 'Mod-,',
+      group: 'file',
+      run: () => setSettingsOpen((shown) => !shown),
+    })
+    registerCommand({
+      id: 'view.status',
+      title: 'cmd.status.panel',
+      group: 'file',
+      run: () => setStatusOpen((shown) => !shown),
     })
     registerCommand({
       id: 'view.info',
@@ -698,7 +908,10 @@ export function App(): React.JSX.Element {
     registerCommand({
       id: 'library.sidebar',
       title: 'cmd.library.sidebar',
-      key: 'Mod-b',
+      // **⌘B 让位给加粗**（190 P1 的 ⌘B 冲突裁决，见附录 A-1）：
+      // 加粗是写作动作，一天按几十次；侧边栏是视图开关，一天按几次。
+      // 侧边栏改 `⌘\`——Obsidian 用的就是它，肌肉记忆不是从零建。
+      key: 'Mod-\\',
       group: 'file',
       run: () => setSidebarOpen((openNow) => !openNow),
     })
@@ -731,14 +944,18 @@ export function App(): React.JSX.Element {
       // **没有 key**——这笔入口债（6b 记的）从此每次按 ⌘/ 都会以「未绑定」被看见一次
       group: 'agent',
       when: needsPage,
-      run: () => setPanelOpen((isOpen) => !isOpen),
+      run: () => setRightbar((now) => openRight(now, { kind: 'threads' })),
     })
   }, [save, pick, openSearch, summon, closeTabAt, switchTab])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey)) return
-      if (event.key === '/') {
+      if (event.key === ',') {
+        // ⌘, 设置（macOS 惯例，S1）
+        event.preventDefault()
+        void execute('view.settings')
+      } else if (event.key === '/') {
         // ⌘/ 快捷键看板（D-32）。**只读**，不执行任何命令
         event.preventDefault()
         void execute('view.keys')
@@ -767,7 +984,7 @@ export function App(): React.JSX.Element {
         // 人工轮连入口都找不到）。删除没有自绘确认：回收站本身就是撤销通道
         event.preventDefault()
         void execute('files.trash')
-      } else if (event.key === 'b') {
+      } else if (event.key === '\\') {
         event.preventDefault()
         setSidebarOpen((openNow) => !openNow)
       } else if (event.key === 'w') {
@@ -833,32 +1050,22 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="sepia-shell" data-sepia-shell={status} data-sepia-markup-report={report ?? undefined}>
-      {session.tabs.length > 0 && (
-        <div className="sepia-tabs" data-sepia-tabs={String(session.tabs.length)}>
-          {session.tabs.map((tab, index) => (
-            <div
-              key={tab.page}
-              className="sepia-tab"
-              data-sepia-tab={tab.page}
-              data-sepia-tab-active={index === session.active ? 'true' : 'false'}
-              onClick={() => void switchTab(index)}
-            >
-              {/* 只有文件名，没有图标——tab 条是一行细字，不是工具栏 */}
-              <span className="sepia-tab-name">{tab.page.split('/').pop()}</span>
-              <span
-                className="sepia-tab-close"
-                data-sepia-tab-close={tab.page}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void closeTabAt(index)
-                }}
-              >
-                ×
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <Tabs
+        tabs={session.tabs.map((tab) => ({ page: tab.page, dirty: dirty && tab.page === session.tabs[session.active]?.page }))}
+        active={session.active}
+        atHome={atHome || page === null}
+        onHome={() => setAtHome(true)}
+        onSelect={(index) => {
+          setAtHome(false)
+          void switchTab(index)
+        }}
+        onClose={(index) => void closeTabAt(index)}
+        onCreate={() => void execute('files.new')}
+        onStatus={() => void execute('view.status')}
+      />
+      {/* F19 状态点（分镜 0）：**角落一枚小点**，启动中灰 → 就绪实心 → 缺席红。
+          它是这个应用里唯一常驻的状态家具——D-30 否掉了底栏，但没否掉这一枚点。 */}
+      <span className="sepia-engine-dot" data-sepia-engine-dot={engine} title={t(ENGINE_DOT[engine])} />
       {engine === 'absent' && (
         <div className="sepia-agent-line" data-sepia-agent="absent">
           {t('agent.absent.line')}
@@ -954,6 +1161,31 @@ export function App(): React.JSX.Element {
           </div>
         </div>
       )}
+      {statusOpen && <StatusOverlay engine={engine} onClose={() => setStatusOpen(false)} />}
+      {settingsOpen && (
+        <Settings
+          config={appConfig}
+          keys={commandEntries({
+            markupOpen: markup !== null,
+            hasPage: page !== null,
+            hasBook: session.book !== null,
+          }).map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            ...(entry.spec === undefined ? {} : { spec: keyCaps(entry.spec).join('') }),
+          }))}
+          onChange={(patch) => {
+            // **先本地生效再落盘**：设置页里改一个数字要立刻看得见，
+            // 等一次 IPC 往返会让开关有"迟滞感"
+            setAppConfig((now) => ({ ...now, ...patch }))
+            void api.config.set(patch).then((result) => {
+              // 落盘后以 main 的结果为准——非法值会在那边被退回默认，本地要跟上
+              if (result.ok) setAppConfig(result.value)
+            })
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {keysOpen && (
         <Cheatsheet
           entries={commandEntries({ markupOpen: markup !== null, hasPage: page !== null, hasBook: session.book !== null })}
@@ -972,6 +1204,30 @@ export function App(): React.JSX.Element {
           path={page.path}
           agentReady={engine === 'ready'}
           onClose={() => setInfoOpen(false)}
+        />
+      )}
+      {slashState !== null && page !== null && (
+        <SlashMenu
+          query={slashState.query}
+          anchor={slashState.anchor}
+          onClose={() => setSlashState(null)}
+          onPick={(item: SlashItem) => {
+            const instance = editor.current
+            if (instance === null) return
+            const caret = item.insert.indexOf('|')
+            const text = item.insert.replace('|', '')
+            // **走 CAS 通道**：区间就是刚敲的那个 `/词`，对不上就不写
+            instance.replaceGuarded({
+              range: { from: slashState.from, to: slashState.from + slashState.query.length + 1 },
+              expectedText: `/${slashState.query}`,
+              replacement: text,
+            })
+            setSlashState(null)
+            draft.current = instance.read()
+            setDirty(true)
+            autosave.current?.bump()
+            void caret
+          }}
         />
       )}
       {refState !== null && page !== null && (
@@ -996,18 +1252,7 @@ export function App(): React.JSX.Element {
           }}
         />
       )}
-      {panelOpen && page !== null && (
-        <ThreadPanel
-          view={threadView}
-          focusId={focusThread}
-          directory={page.path.slice(0, page.path.lastIndexOf('/'))}
-          page={page.path}
-          onClose={() => {
-            setPanelOpen(false)
-            setFocusThread(null)
-          }}
-        />
-      )}
+
       {markup !== null &&
         page !== null &&
         createPortal(
@@ -1018,7 +1263,10 @@ export function App(): React.JSX.Element {
               selectionKind="text"
               request={{
                 selection: markup.snapshot,
-                nearby: nearbyBlocks(draft.current, markup.range, markupConfig().contextScope),
+                nearby: [
+                  ...nearbyBlocks(draft.current, markup.range, markupConfig().contextScope),
+                  ...refContents,
+                ],
                 directory: page.path.slice(0, page.path.lastIndexOf('/')),
                 budgetTokens: markupConfig().contextBudgetTokens,
               }}
@@ -1065,8 +1313,13 @@ export function App(): React.JSX.Element {
         />
       )}
       {/* 侧边栏 + 纸：**收起时纸就是整扇窗**（⌘B，§2.1 ②） */}
-      <div className="sepia-body" data-sepia-sidebar={sidebarOpen && session.book !== null ? 'open' : 'closed'}>
-        {sidebarOpen && session.book !== null && (
+      <div
+        className="sepia-body"
+        data-sepia-sidebar={sidebarOpen && session.book !== null && page !== null && !atHome ? 'open' : 'closed'}
+      >
+        {/* **主页不挂文件树**：主页有它自己的左栏（workspace 列表），
+            两个左栏并排是原型里没有的东西，也让"我在哪儿"多了一处要看。 */}
+        {sidebarOpen && session.book !== null && page !== null && !atHome && (
           <FileTree
             book={session.book}
             current={session.tabs[session.active]?.page ?? null}
@@ -1075,6 +1328,34 @@ export function App(): React.JSX.Element {
         )}
         <div
           className="sepia-paper-area"
+          onClickCapture={(event) => {
+            // 链接点击（F16 / F18 / D-39）。**在捕获阶段接**：CM6 自己也管点击，
+            // 冒泡阶段轮到我们时光标已经被它挪走了。
+            const target = event.target as HTMLElement | null
+            if (target === null || target.closest('.cm-md-link') === null) return
+            const instance = editor.current
+            const book = sessionRef.current.book
+            if (instance === null) return
+            // 从点中的位置往回找这条链接的 `](目标)`
+            const text = instance.read()
+            const label = target.textContent ?? ''
+            const at = label === '' ? -1 : text.indexOf(`[${label}](`)
+            const url = at === -1 ? null : /\]\(([^)\s]+)\)/.exec(text.slice(at))?.[1] ?? null
+            if (url === null) return
+            event.preventDefault()
+            event.stopPropagation()
+            if (/^https?:\/\//i.test(url)) {
+              // **外链默认进右栏阅读模式**（D-39）；按住 ⌘ 才交系统浏览器
+              if (event.metaKey || appConfig.externalLinks === 'system') void api.openExternal(url)
+              else setRightbar((now) => openRight(now, { kind: 'browser', url }))
+              return
+            }
+            if (book === null) return
+            const absolute = tabPath(book, url)
+            // **⌘点击 = 右栏开第二编辑器**（F16）；单击 = 当前 tab 跳转
+            if (event.metaKey) setRightbar((now) => openRight(now, { kind: 'split', path: absolute }))
+            else void openInTab(absolute)
+          }}
           onDragOver={(event) => event.preventDefault()}
           onDropCapture={(event) => {
             // **捕获阶段**：CM6 自己也管 drop/paste，冒泡阶段轮到我们时它可能
@@ -1093,13 +1374,54 @@ export function App(): React.JSX.Element {
             void dropImages(images)
           }}
         >
-      {page === null ? (
+      {page === null || atHome ? (
         <Home
           book={session.book}
-          onOpenBook={chooseBook}
-          onOpenPage={(absolute) => void openInTab(absolute)}
+          onOpenBook={(dir) => {
+            setAtHome(false)
+            chooseBook(dir)
+          }}
+          onOpenPage={(absolute) => {
+            setAtHome(false)
+            void openInTab(absolute)
+          }}
+          onSettings={() => setSettingsOpen(true)}
+          onKeys={() => setKeysOpen(true)}
+          onNewPage={() => void execute('files.new')}
         />
       ) : (
+        <>
+        <PaperTop
+          name={page.path.split('/').pop() ?? ''}
+          metaOpen={metaOpen}
+          linksOpen={rightbar?.kind === 'links'}
+          threadsOpen={rightbar?.kind === 'threads'}
+          onMeta={() => setMetaOpen((now) => !now)}
+          onLinks={() => setRightbar((now) => openRight(now, { kind: 'links' }))}
+          onThreads={() => setRightbar((now) => openRight(now, { kind: 'threads' }))}
+        />
+        {metaOpen && (
+          <MetaTable
+            text={draft.current}
+            onSet={(key, value) => {
+              const instance = editor.current
+              if (instance === null) return
+              // **整篇替换但只有那一行变**：core 的 `setMetaField` 保证其余字节原样，
+              // 这里走 CAS 通道（compare 的是当前全文）——中途被别处改过就不写
+              const before = instance.read()
+              const after = setMetaField(before, key, value)
+              if (after === before) return
+              instance.replaceGuarded({
+                range: { from: 0, to: before.length },
+                expectedText: before,
+                replacement: after,
+              })
+              draft.current = instance.read()
+              setDirty(true)
+              autosave.current?.bump()
+            }}
+          />
+        )}
         <EditorHost
           doc={page.body}
           lineEnding={page.fidelity.lineEnding}
@@ -1119,7 +1441,7 @@ export function App(): React.JSX.Element {
             // W11：点徽章与开面板是同一个面板的两条入口。点进来的这条要**直接展开**，
             // 否则用户点了一个具体的点，却只得到一张列表——那不叫"打开这条线程"。
             setFocusThread(id)
-            setPanelOpen(true)
+            setRightbar({ kind: 'threads' })
           }}
           onChange={(next) => {
             draft.current = next
@@ -1136,6 +1458,20 @@ export function App(): React.JSX.Element {
             if (instance === null) return
             const at = instance.selection().from
             const before = next.slice(Math.max(0, at - 40), at)
+            // `/` 侦测：**行首那个斜杠才算**（空行触发，F4）
+            const lineStart = next.lastIndexOf('\n', Math.max(0, at - 1)) + 1
+            const lineBefore = next.slice(lineStart, at)
+            const slash = /^\/([^\s/]*)$/.exec(lineBefore)
+            setSlashState(
+              slash === null
+                ? null
+                : {
+                    from: lineStart,
+                    query: slash[1] ?? '',
+                    anchor: instance.coordsAt(lineStart),
+                  },
+            )
+
             const match = /@([^\s@[\]()]*)$/.exec(before)
             setRefState(
               match === null
@@ -1158,8 +1494,53 @@ export function App(): React.JSX.Element {
           }}
           onReady={() => api.perfMark('t5')}
         />
+        </>
       )}
         </div>
+        {/* 右侧区：**一个位置，三种占用者互斥**（190 P0）。
+            装什么由这里决定，容器自己不认识占用者的种类。 */}
+        {rightbar !== null && page !== null && (
+          <Rightbar
+            state={rightbar}
+            width={rightWidth}
+            onWidth={setRightWidth}
+            onClose={() => {
+              setRightbar(null)
+              setFocusThread(null)
+            }}
+          >
+            {rightbar.kind === 'links' && (
+              <LinksPanel
+                text={draft.current}
+                onOpenPage={(relative) => {
+                  const book = sessionRef.current.book
+                  if (book !== null) void openInTab(tabPath(book, relative))
+                }}
+                onOpenExternal={(url) => setRightbar({ kind: 'browser', url })}
+              />
+            )}
+            {rightbar.kind === 'browser' && (
+              <Reader url={rightbar.url} onOpenSystem={(url) => void api.openExternal(url)} />
+            )}
+            {rightbar.kind === 'split' && (
+              // F16 @ 双屏：右栏是**完整的第二编辑器**，不是只读预览。
+              // **永远只有两栏**——再 ⌘点新引用替换右栏内容（core 的 openRight 保证）
+              <SplitEditor path={rightbar.path} />
+            )}
+            {rightbar.kind === 'threads' && (
+              <ThreadPanel
+                view={threadView}
+                focusId={focusThread}
+                directory={page.path.slice(0, page.path.lastIndexOf('/'))}
+                page={page.path}
+                onClose={() => {
+                  setRightbar(null)
+                  setFocusThread(null)
+                }}
+              />
+            )}
+          </Rightbar>
+        )}
       </div>
     </div>
   )

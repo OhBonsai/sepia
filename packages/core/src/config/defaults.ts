@@ -24,9 +24,15 @@ export const DEFAULT_CONFIG: AppConfig = {
   watcher: { usePolling: false },
   libraryTreeEntryLimit: 500,
   libraryRecentsLimit: 20,
+  imageDirectory: 'assets',
+  tabWidth: 2,
+  frontmatterView: 'source',
+  externalLinks: 'embedded',
 }
 
 const CONTEXT_SCOPES = new Set(['selection', 'page'])
+const FRONTMATTER_VIEWS = new Set(['table', 'source', 'hidden'])
+const EXTERNAL_LINKS = new Set(['embedded', 'system'])
 
 /** 0–1 之间的小数才收。**0 与 1 都不收**：0 = 什么都能匹配（必误挂），1 = 只认逐字相同。 */
 function ratio(value: unknown, fallback: number): number {
@@ -72,6 +78,10 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
     'anchorFuzzyThreshold',
     'libraryTreeEntryLimit',
     'libraryRecentsLimit',
+    'imageDirectory',
+    'tabWidth',
+    'frontmatterView',
+    'externalLinks',
     'watcher',
   ])
   const preserved: Record<string, unknown> = {}
@@ -100,6 +110,17 @@ export function mergeConfig(raw: unknown): { config: AppConfig; unknown: Record<
       anchorFuzzyThreshold: ratio(raw['anchorFuzzyThreshold'], DEFAULT_CONFIG.anchorFuzzyThreshold),
       libraryTreeEntryLimit: positiveInt(raw['libraryTreeEntryLimit'], DEFAULT_CONFIG.libraryTreeEntryLimit),
       libraryRecentsLimit: positiveInt(raw['libraryRecentsLimit'], DEFAULT_CONFIG.libraryRecentsLimit),
+      imageDirectory:
+        typeof raw['imageDirectory'] === 'string' && raw['imageDirectory'].trim() !== ''
+          ? raw['imageDirectory'].trim()
+          : DEFAULT_CONFIG.imageDirectory,
+      tabWidth: positiveInt(raw['tabWidth'], DEFAULT_CONFIG.tabWidth),
+      frontmatterView: FRONTMATTER_VIEWS.has(String(raw['frontmatterView']))
+        ? (raw['frontmatterView'] as AppConfig['frontmatterView'])
+        : DEFAULT_CONFIG.frontmatterView,
+      externalLinks: EXTERNAL_LINKS.has(String(raw['externalLinks']))
+        ? (raw['externalLinks'] as AppConfig['externalLinks'])
+        : DEFAULT_CONFIG.externalLinks,
       watcher: { usePolling: isRecord(watcher) && watcher['usePolling'] === true },
     },
     unknown: preserved,
@@ -129,6 +150,12 @@ export function configToDisk(
   if (config.libraryTreeEntryLimit !== DEFAULT_CONFIG.libraryTreeEntryLimit) {
     out['libraryTreeEntryLimit'] = config.libraryTreeEntryLimit
   }
+  if (config.imageDirectory !== DEFAULT_CONFIG.imageDirectory) {
+    out['imageDirectory'] = config.imageDirectory
+  }
+  if (config.tabWidth !== DEFAULT_CONFIG.tabWidth) out['tabWidth'] = config.tabWidth
+  if (config.frontmatterView !== DEFAULT_CONFIG.frontmatterView) out['frontmatterView'] = config.frontmatterView
+  if (config.externalLinks !== DEFAULT_CONFIG.externalLinks) out['externalLinks'] = config.externalLinks
   if (config.libraryRecentsLimit !== DEFAULT_CONFIG.libraryRecentsLimit) {
     out['libraryRecentsLimit'] = config.libraryRecentsLimit
   }
