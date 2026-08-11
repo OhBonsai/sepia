@@ -27,6 +27,7 @@
     "@sepia/core": "workspace:*",
     "@sepia/editor": "workspace:*",
     "@sepia/ui": "workspace:*",
+    "motion": "catalog:",
     "@shikijs/langs": "catalog:",
     "chokidar": "catalog:",
     "jsonc-parser": "catalog:",

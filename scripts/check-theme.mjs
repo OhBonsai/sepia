@@ -59,6 +59,22 @@ function referencedVars(source) {
   return names
 }
 
+// **形制与动效 token 不是色板**（190 P7 引入）：圆角、间距、时长、缓动。
+// 它们与颜色的区别是**不随亮暗变**，所以不进 `themeVar`（那张表是给 CM6 与
+// Shiki 共用色板用的）。但它们同样必须在 theme.css 里真实定义——下面 C 那一道
+// 照样管着它们，只是不要求出现在 themeVar 表里。
+const SHAPE_TOKENS = new Set([
+  '--sepia-radius',
+  '--sepia-radius-card',
+  '--sepia-titlebar-h',
+  '--sepia-gutter',
+  '--sepia-motion-fast',
+  '--sepia-motion',
+  '--sepia-ease',
+])
+
+const palette = read(PALETTE_FILE)
+const defined = new Set([...palette.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]))
 const declared = new Set(varNames(varsSource))
 if (declared.size === 0) {
   report.add('纪律 14', 'themeVar 表为空', VARS_FILE, '这条检查靠它当真相，空表意味着检查在空转')
@@ -72,6 +88,13 @@ for (const [file, label] of [
   const used = new Set(referencedVars(read(file)))
   for (const name of used) {
     if (declared.has(name)) continue
+    // 形制/动效 token 不在色板表里，但下面 C 那一道会验它在 theme.css 里定义了
+    if (SHAPE_TOKENS.has(name)) {
+      if (!defined.has(name)) {
+        report.add('纪律 14', '用了 theme.css 没定义的形制 token', file, `${name} —— 它会静默失效成 0 或 initial`)
+      }
+      continue
+    }
     report.add('纪律 14', `${label}用了 themeVar 表里没有的变量`, file, `${name} —— 色板的唯一真相是 ${VARS_FILE}`)
   }
   if (used.size === 0) {
@@ -80,8 +103,6 @@ for (const [file, label] of [
 }
 
 // C：themeVar 里的名字，theme.css 亮暗两套都要定义。
-const palette = read(PALETTE_FILE)
-const defined = new Set([...palette.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]))
 for (const name of declared) {
   if (defined.has(name)) continue
   report.add('纪律 14', 'themeVar 声明了 theme.css 没定义的变量', PALETTE_FILE, `${name} —— 用它的地方会静默继承成别的颜色`)

@@ -26,6 +26,9 @@ export const themeVar = {
   danger: 'var(--sepia-danger)',
   /** 浮层背后的压暗层（⌘/ 看板）。**不是纯黑半透**——纸的暗层也该带纸的味道 */
   scrim: 'var(--sepia-scrim)',
+  /** 角标/强调用的橙。Flexoki orange，与 synFunction 同值但语义不同——
+      一个是"这是函数名"，一个是"这里有更新"，不该互相借用。 */
+  orange: 'var(--sepia-orange)',
 
   // 语法色板（Flexoki accent 映射；Stage 4 check:theme 的同源真相）
   synMark: 'var(--sepia-syn-mark)',

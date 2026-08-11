@@ -64,6 +64,7 @@ import { SplitEditor } from '../editor/split.tsx'
 import { LinksPanel } from '../library/links.tsx'
 import { Reader } from '../library/reader.tsx'
 import { MetaTable } from './meta.tsx'
+import { OverlayRise, PanelSwap, PaperEnter } from './motion.tsx'
 import { PaperTop } from './papertop.tsx'
 import { Settings } from './settings.tsx'
 import { StatusOverlay } from './status.tsx'
@@ -1163,6 +1164,7 @@ export function App(): React.JSX.Element {
       )}
       {statusOpen && <StatusOverlay engine={engine} onClose={() => setStatusOpen(false)} />}
       {settingsOpen && (
+        <OverlayRise>
         <Settings
           config={appConfig}
           keys={commandEntries({
@@ -1185,6 +1187,7 @@ export function App(): React.JSX.Element {
           }}
           onClose={() => setSettingsOpen(false)}
         />
+        </OverlayRise>
       )}
       {keysOpen && (
         <Cheatsheet
@@ -1390,7 +1393,9 @@ export function App(): React.JSX.Element {
           onNewPage={() => void execute('files.new')}
         />
       ) : (
-        <>
+        // ①② 主页→纸的进入 与 tab 切换：**同一处**（key 是当前 page），
+        // 于是"换一张纸"这件事只有一个动效定义（190 附录 B-1 白名单 ①②）
+        <PaperEnter keyed={page.path}>
         <PaperTop
           name={page.path.split('/').pop() ?? ''}
           metaOpen={metaOpen}
@@ -1494,7 +1499,7 @@ export function App(): React.JSX.Element {
           }}
           onReady={() => api.perfMark('t5')}
         />
-        </>
+        </PaperEnter>
       )}
         </div>
         {/* 右侧区：**一个位置，三种占用者互斥**（190 P0）。
@@ -1509,6 +1514,7 @@ export function App(): React.JSX.Element {
               setFocusThread(null)
             }}
           >
+            <PanelSwap keyed={`${rightbar.kind}:${'path' in rightbar ? rightbar.path : 'url' in rightbar ? rightbar.url : ''}`}>
             {rightbar.kind === 'links' && (
               <LinksPanel
                 text={draft.current}
@@ -1539,6 +1545,7 @@ export function App(): React.JSX.Element {
                 }}
               />
             )}
+            </PanelSwap>
           </Rightbar>
         )}
       </div>

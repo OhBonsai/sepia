@@ -236,34 +236,53 @@ function loadMermaid(): Promise<Mermaid> {
 
 export class TextDiagramWidget extends SourceWidget {
   override toDOM(): HTMLElement {
+    // **围栏组件统一一张"皮"**（190 P7 校形，照原型的 shader 块壳）：
+    //   头部行「语言 · 组件名」左 + 状态右 ｜ 主体 ｜ 底部状态细行
+    // shader 实时块按 D-27 排除，这里只取它的壳——于是 textdiagram 与将来的
+    // 别的组件长在同一张皮上，不必各画各的框。
     const wrap = document.createElement('div')
-    wrap.className = 'sepia-textdiagram'
+    wrap.className = 'sepia-block'
+    const head = document.createElement('div')
+    head.className = 'sepia-block-head'
+    const kind = document.createElement('span')
+    kind.className = 'sepia-block-kind'
+    kind.textContent = 'textdiagram · 图表'
+    const state = document.createElement('span')
+    state.className = 'sepia-block-state'
+    state.textContent = '失焦渲染'
+    head.append(kind, state)
+    wrap.append(head)
+
+    const body = document.createElement('div')
+    body.className = 'sepia-textdiagram'
     // 去掉围栏行，只留图体
-    const body = this.source
+    const source = this.source
       .split(/\r\n|\r|\n/)
       .slice(1, -1)
       .join('\n')
     // 先把源码放上——模块还在路上时，用户至少看得见自己写了什么
     const pre = document.createElement('pre')
-    pre.textContent = body
-    wrap.append(pre)
+    pre.textContent = source
+    body.append(pre)
+    wrap.append(body)
 
     const paint = (engine: Mermaid): void => {
       mermaidSeq += 1
       void engine
-        .render(`sepia-mmd-${String(mermaidSeq)}`, body)
+        .render(`sepia-mmd-${String(mermaidSeq)}`, source)
         .then(({ svg }) => {
-          if (!wrap.isConnected) return
-          wrap.innerHTML = svg
+          if (!body.isConnected) return
+          body.innerHTML = svg
         })
         .catch((error: unknown) => {
           // **渲染失败不崩、也不装作没事**：退回源码 + 一行错，图表语法写错是常事
-          if (!wrap.isConnected) return
-          wrap.classList.add('sepia-textdiagram-broken')
+          if (!body.isConnected) return
+          wrap.classList.add('sepia-block-broken')
+          state.textContent = '语法有误'
           const note = document.createElement('div')
           note.className = 'sepia-textdiagram-error'
           note.textContent = error instanceof Error ? error.message : String(error)
-          wrap.append(note)
+          body.append(note)
         })
     }
 

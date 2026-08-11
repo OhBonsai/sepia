@@ -23,6 +23,7 @@
   --sepia-caret: #100f0f;
   --sepia-danger: #af3029;
   --sepia-scrim: #100f0f26;
+  --sepia-orange: #bc5215;
 
   /* 语法八色（Flexoki accent 600 档）+ 结构角色 */
   --sepia-syn-mark: #b7b5ac;
@@ -53,6 +54,7 @@
     --sepia-caret: #cecdc3;
     --sepia-danger: #d14d41;
     --sepia-scrim: #00000059;
+    --sepia-orange: #da702c;
 
     /* 语法八色（Flexoki accent 400 档） */
     --sepia-syn-mark: #575653;
@@ -81,6 +83,8 @@
   --sepia-selection: #dad8ce;
   --sepia-caret: #100f0f;
   --sepia-danger: #af3029;
+  --sepia-scrim: #100f0f26;
+  --sepia-orange: #bc5215;
 
   --sepia-syn-mark: #b7b5ac;
   --sepia-syn-link: #205ea6;
@@ -107,6 +111,8 @@
   --sepia-selection: #343331;
   --sepia-caret: #cecdc3;
   --sepia-danger: #d14d41;
+  --sepia-scrim: #00000059;
+  --sepia-orange: #da702c;
 
   --sepia-syn-mark: #575653;
   --sepia-syn-link: #4385be;
@@ -122,4 +128,35 @@
   --sepia-syn-attribute: #ce5d97;
 
   color-scheme: dark;
+}
+
+/* ── 形制与动效 token（190 P7 校形 / 附录 B-1）─────────────────────────
+   **不随亮暗变**，所以只定义一次，不进上面那三套色板块。
+   放在这儿而不是各组件里：`4px` 这种数字一旦散落，"统一"就只是一句话。 */
+:root {
+  /* 圆角。**卡片比控件大一档**——纸是一张纸，按钮是按钮上的一个小方块。
+     Stage 2 裁的「4px」是控件那一档，卡片这一档由 190 P7 量原型定为 10px。 */
+  --sepia-radius: 4px;
+  --sepia-radius-card: 10px;
+
+  /* 标题栏那一行的高度。与 main 里 `trafficLightPosition.y` 是同一件事的两半。 */
+  --sepia-titlebar-h: 38px;
+
+  /* 纸卡片四周的呼吸。原型里纸与窗口边界之间是有距离的。 */
+  --sepia-gutter: 14px;
+
+  /* 动效（附录 B-1 §3）：**时长与缓动统一在这儿定义，不许游离硬编码**。
+     快起缓收 = 纸的脾气：动作一开始就到位，收尾松一口气。 */
+  --sepia-motion-fast: 120ms;
+  --sepia-motion: 180ms;
+  --sepia-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* `prefers-reduced-motion` 下**全部退化为瞬时**（B-1 §3，有检查护着）。
+   把时长归零而不是逐处判断——于是新加的动效自动被这一条覆盖。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sepia-motion-fast: 0ms;
+    --sepia-motion: 0ms;
+  }
 }

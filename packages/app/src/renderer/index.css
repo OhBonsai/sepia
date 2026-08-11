@@ -1570,3 +1570,232 @@ body {
 .sepia-home-side-head [data-sepia-home-rail-close]:hover {
   opacity: 1;
 }
+
+/* ═══ P7 校形（190）：窗口 · 纸卡片 · 排版 ══════════════════════════════ */
+
+/* ── Tab 栏融进标题栏（原型：红绿灯与 tab 同一行）───────────────────── */
+.sepia-tabs {
+  align-items: center;
+  height: var(--sepia-titlebar-h);
+  padding: 0 10px 0 0;
+  border-bottom: none;
+  /* **空白处可拖窗**：tab 栏占了标题栏那一行，窗口就得靠它来拖。
+     tab 与按钮各自 no-drag（见下），否则点它们会变成拖窗口。 */
+  -webkit-app-region: drag;
+}
+
+.sepia-tabs-traffic {
+  flex: none;
+  /* 三个灯 + 两侧留白。改这个数要连 main 的 trafficLightPosition 一起看 */
+  width: 78px;
+}
+
+.sepia-tab,
+.sepia-tab-home,
+.sepia-tab-add,
+.sepia-tab-status {
+  -webkit-app-region: no-drag;
+}
+
+/* 活动 tab = 浅色胶囊（原型形态）；非活动纯文字，之间细分隔线 */
+.sepia-tab {
+  position: relative;
+  height: 26px;
+  padding: 0 10px;
+  border-bottom: none;
+  border-radius: var(--sepia-radius);
+}
+
+.sepia-tab[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+}
+
+.sepia-tab[data-sepia-tab-active='false'] + .sepia-tab[data-sepia-tab-active='false']::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: -1px;
+  content: '';
+  border-left: 1px solid var(--sepia-rule);
+}
+
+.sepia-tab-home[data-sepia-tab-active='true'] {
+  color: var(--sepia-ink);
+  background: var(--sepia-paper);
+  border-bottom-color: transparent;
+  border-radius: var(--sepia-radius);
+}
+
+/* 状态图标的更新角标：右上一颗橙点（走 --sepia-orange，不硬编码） */
+.sepia-tab-status {
+  position: relative;
+}
+
+.sepia-tab-status[data-sepia-tab-status-badge='true']::after {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  margin: 0;
+  content: '';
+  background: var(--sepia-orange);
+  border-radius: 50%;
+}
+
+/* ── 纸卡片：更深的底 + 更大的呼吸 + 卡片圆角（仍然无阴影）───────────── */
+.sepia-body {
+  gap: var(--sepia-gutter);
+  /* 四周都要呼吸——顶上那道尤其重要：纸贴着 tab 栏就不像"浮在底上"了 */
+  padding: 6px var(--sepia-gutter) var(--sepia-gutter);
+  background: var(--sepia-surface);
+}
+
+.sepia-paper-area {
+  margin: 0;
+  border-radius: var(--sepia-radius-card);
+}
+
+.sepia-rightbar {
+  margin: 0;
+  border-radius: var(--sepia-radius-card);
+}
+
+.sepia-tree {
+  padding-top: 4px;
+}
+
+/* 纸头：文件名小字灰在左，三图标在右——命中区放大到 26px 见方 */
+.sepia-paper-top {
+  width: min(760px, calc(100% - 48px));
+  padding: 18px 0 10px;
+}
+
+.sepia-paper-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  transition: background var(--sepia-motion-fast) var(--sepia-ease);
+}
+
+/* ── 正文排版：H1 更大更重、inline code 浅灰 chip ───────────────────── */
+.cm-content .cm-md-h1 {
+  font-size: 1.65em;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+/* inline code 是一枚 chip：**上下不撑行高**（padding 只给左右与很小的上下，
+   靠 line-height:1 把它压回行内），否则每出现一个行内代码，那一行就比别行高。 */
+.cm-content .cm-md-code {
+  padding: 1px 5px;
+  font-size: 0.92em;
+  background: var(--sepia-surface);
+  border-radius: 2px;
+}
+
+/* ── 围栏组件的统一"皮"（照原型的 shader 块壳）─────────────────────────
+   头部「语言 · 组件名」左 + 状态右 ｜ 主体 ｜（将来）底部状态细行。
+   shader 实时块按 D-27 不做，这里只取它的壳——于是所有块组件长在同一张皮上。 */
+.sepia-block {
+  margin: 6px 0;
+  overflow: hidden;
+  background: var(--sepia-paper);
+  border: 1px solid var(--sepia-rule);
+  border-radius: var(--sepia-radius);
+}
+
+.sepia-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--sepia-ink-muted);
+  background: var(--sepia-surface);
+  border-bottom: 1px solid var(--sepia-rule);
+}
+
+.sepia-block[data-broken='true'] .sepia-block-state,
+.sepia-block-broken .sepia-block-state {
+  color: var(--sepia-danger);
+}
+
+.sepia-block .sepia-textdiagram {
+  padding: 12px;
+}
+
+/* ── 主页层次：左栏与主区的分隔、搜索框形态、行高与角标 ───────────────── */
+.sepia-home {
+  background: var(--sepia-surface);
+}
+
+.sepia-home-side {
+  padding: 14px 10px;
+  background: var(--sepia-paper);
+  border-right: 1px solid var(--sepia-rule);
+  border-radius: var(--sepia-radius-card) 0 0 var(--sepia-radius-card);
+}
+
+.sepia-home-main {
+  padding: 24px 32px;
+  background: var(--sepia-paper);
+  border-radius: 0 var(--sepia-radius-card) var(--sepia-radius-card) 0;
+}
+
+.sepia-home-search {
+  padding: 8px 10px;
+  background: var(--sepia-surface);
+  border-radius: var(--sepia-radius);
+}
+
+.sepia-home-recent {
+  gap: 12px;
+  padding: 7px 8px;
+  transition: background var(--sepia-motion-fast) var(--sepia-ease);
+}
+
+.sepia-home-side-foot {
+  gap: 4px;
+  padding-top: 10px;
+}
+
+.sepia-home-side-foot button,
+.sepia-home-side-head button {
+  padding: 3px 4px;
+  border-radius: var(--sepia-radius);
+}
+
+.sepia-home-side-foot button:hover {
+  background: var(--sepia-surface);
+}
+
+/* 动效包装层。
+   **不能用 `display: contents`**——那样元素没有盒子，transform 一概不生效，
+   动效会静默变成"什么都没发生"。所以每一处都给一个真实的盒子，
+   并让它在布局上等价于原来那个孩子。 */
+.sepia-motion-paper {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sepia-motion-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 设置浮层：包装层自己撑满视口，里面那张 fixed 的卡片照旧居中。 */
+.sepia-motion-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+}

@@ -40,6 +40,16 @@ export function createWindow(): BrowserWindow {
     height: 720,
     show: false,
     backgroundColor: theme.backgroundColor(),
+    // **tab 栏融进标题栏**（190 P7 校形：原型里红绿灯与 tab 同一行）。
+    //
+    // `hiddenInset` 而不是 `hidden`：前者保留系统红绿灯、只把标题条隐掉，
+    // 于是我们自绘的 tab 栏可以占据那一行，而窗口该有的操作一个不少。
+    // 全自绘（`hidden` + 自画三个圆点）会得到一套"像但不是"的红绿灯——
+    // 悬停展开、长按菜单、辅助功能全都要重做，而那些不是这个产品该花的地方。
+    titleBarStyle: 'hiddenInset',
+    // 红绿灯垂直居中到 tab 栏那一行。x 保持系统默认的观感，只压 y——
+    // 数字与 CSS 里 `--sepia-titlebar-h` 是同一件事的两半，改一处要改两处。
+    trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

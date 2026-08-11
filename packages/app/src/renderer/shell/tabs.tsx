@@ -27,6 +27,9 @@ export function Tabs(props: TabsProps): React.JSX.Element {
   const { tabs, active, atHome, onHome, onSelect, onClose, onCreate, onStatus } = props
   return (
     <div className="sepia-tabs" data-sepia-tabs={String(tabs.length)}>
+      {/* **给 macOS 红绿灯让位**：tab 栏融进标题栏之后，最左那一段是系统的。
+          宽度与 main 里 `trafficLightPosition` 对着看——两处是同一件事的两半。 */}
+      <span className="sepia-tabs-traffic" aria-hidden="true" />
       <button
         type="button"
         // **不挂 `sepia-tab` 类**：它在视觉上与文件 tab 同族，但"有几个 tab"
