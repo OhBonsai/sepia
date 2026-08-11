@@ -1461,7 +1461,6 @@ body {
 .sepia-home-side-foot button,
 .sepia-home-label button,
 .sepia-rightbar-head button,
-.sepia-tree-head button,
 .sepia-reader-note button,
 .sepia-reader button,
 .sepia-markup-actions button,
@@ -1478,24 +1477,6 @@ body {
 
 .sepia-tab:hover .sepia-tab-close-mark {
   display: inline-flex;
-}
-
-.sepia-tree-head {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 8px 4px;
-}
-
-.sepia-tree-head button {
-  color: var(--sepia-ink-muted);
-  cursor: pointer;
-  background: none;
-  border: none;
-  opacity: 0.6;
-}
-
-.sepia-tree-head button:hover {
-  opacity: 1;
 }
 
 /* 主页搜索框：图标压在框内左侧 */
