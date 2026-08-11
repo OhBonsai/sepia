@@ -25,6 +25,25 @@ const TARGET = 'packages/ui/src/icons/paths.ts'
  *
  * **只列有调用点的**：留一个没人调用的导出，就是下一个"listModels 在桥上
  * 亮了四个 stage 没人接"。每次改这份清单都顺手确认一遍每个名字都有人用。
+ *
+ * ── 为什么是 26 个（任务描述写的是"22 个"，差异记在这儿免得再核一遍）──────
+ *
+ * 按替换清单逐行去重累计：
+ *
+ *   tabs         house, plus, x, activity                              → 新增 4（累计 4）
+ *   papertop     table-properties, link, message-square                → 新增 3（累计 7）
+ *   home         search, square-pen, settings-2, circle-help,
+ *                panel-left-close（plus 与前面重复）                    → 新增 5（累计 12）
+ *   设置九个导航  keyboard, pen-tool, file-text, bot, cpu, sparkle,
+ *                plug, send（settings-2 与前面重复）                    → 新增 8（累计 20）
+ *   rightbar     external-link（x 重复）                                → 新增 1（累计 21）
+ *   search-panel chevron-up, chevron-down（x 重复）                     → 新增 2（累计 23）
+ *   markup       rotate-cw                                             → 新增 1（累计 24）
+ *   slash        workflow, image                                       → 新增 2（累计 26）
+ *   树右键        folder, trash-2 —— **没有图标位，按"没有就不加"未采用**  → 0
+ *
+ * 也就是说"22"与清单自己列举的名字对不上；**清单是准的，数字是笔误**。
+ * 要砍到 22 就必然有四个点名要用的图标没有实现——所以按清单走，不按那个数字走。
  */
 const NAMES = [
   'house',
