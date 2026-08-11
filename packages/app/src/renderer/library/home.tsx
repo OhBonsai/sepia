@@ -42,6 +42,13 @@ export function Home(props: HomeProps): React.JSX.Element {
   const [recents, setRecents] = useState<RecentEntry[]>([])
   const [query, setQuery] = useState('')
   /**
+   * 左栏收起（清单里的 `◀ 收起`）。
+   *
+   * **只影响主页自己的左栏**，与 Page 页的文件树（⌘\）是两回事——
+   * 两个界面各有各的左栏，共用一个开关反而会让"我收起的是哪个"说不清。
+   */
+  const [railOpen, setRailOpen] = useState(true)
+  /**
    * 这个 book 里有没有 markdown。
    *
    * **6b 真人轮修过的那句人话，现在归主页**：那时它长在文件树的空态里，
@@ -87,9 +94,30 @@ export function Home(props: HomeProps): React.JSX.Element {
 
   return (
     <div className="sepia-home" data-sepia-home={book === null ? 'no-book' : 'book'}>
-      <aside className="sepia-home-side">
+      {!railOpen && (
+        // 收起之后留一条窄边：**不能收成没有出口**，否则这个功能只能靠刷新撤销
+        <button
+          type="button"
+          className="sepia-home-rail-open"
+          data-sepia-home-rail="closed"
+          title={t('home.rail.open')}
+          onClick={() => setRailOpen(true)}
+        >
+          <Icon name="panel-left-close" size={14} />
+        </button>
+      )}
+      {railOpen && (
+      <aside className="sepia-home-side" data-sepia-home-rail="open">
         <div className="sepia-home-side-head">
           <span>{t('home.notes')}</span>
+          <button
+            type="button"
+            data-sepia-home-rail-close=""
+            title={t('home.rail.close')}
+            onClick={() => setRailOpen(false)}
+          >
+            <Icon name="panel-left-close" size={14} />
+          </button>
           <button
             type="button"
             data-sepia-home-action="book"
@@ -123,12 +151,6 @@ export function Home(props: HomeProps): React.JSX.Element {
             >
               <span className="sepia-home-avatar">{avatarOf(workspace.name)}</span>
               <span className="sepia-home-book-name">{workspace.name}</span>
-              {/* 当前 book 的标记。**位置照原型**——它画在当前 workspace 那一行的
-                  右缘（`│ S sepia │◀│`），不是一个独立的收起按钮。
-                  只在当前那一行出现，所以它同时是"你在哪个 book"的答案。 */}
-              {workspace.path === book && (
-                <Icon name="panel-left-close" size={13} className="sepia-home-book-mark" />
-              )}
             </button>
           ))}
         </div>
@@ -160,6 +182,7 @@ export function Home(props: HomeProps): React.JSX.Element {
           </button>
         </div>
       </aside>
+      )}
 
       <main className="sepia-home-main">
         <div className="sepia-home-searchbox">

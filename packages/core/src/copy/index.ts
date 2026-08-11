@@ -26,6 +26,8 @@ export const copy = {
   'settings.new': '新',
   'cmd.settings': '设置',
   'home.notes': '笔记本',
+  'home.rail.close': '收起',
+  'home.rail.open': '展开笔记本列表',
   'home.settings': '设置',
   'home.help': '帮助',
   'home.new.page': '新建笔记',

@@ -1478,14 +1478,6 @@ body {
   padding-left: 32px;
 }
 
-/* 当前 book 的标记：原型里 ◀ 所在的位置（当前 workspace 行的右缘）。
-   **只是标记，不是按钮**——所以不给 hover 态，也不吃指针事件。 */
-.sepia-home-book-mark {
-  margin-left: auto;
-  color: var(--sepia-ink-muted);
-  pointer-events: none;
-  opacity: 0.55;
-}
 
 /* ── 图标对齐（借 opencode 的 Icon 规范）─────────────────────────────
    它那份的要点是：图标是一个**居中且不许被压扁的方块**，不是一个随基线漂的字形。
@@ -1551,4 +1543,30 @@ body {
 
 .sepia-home-searchbox .sepia-home-search {
   padding-left: 32px;
+}
+
+/* 主页左栏收起后留下的那条窄边。**不能收成没有出口**——
+   一个只能靠刷新撤销的收起，等于一个坏掉的开关。 */
+.sepia-home-rail-open {
+  align-self: flex-start;
+  padding: 14px 10px;
+  color: var(--sepia-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--sepia-rule);
+  opacity: 0.6;
+}
+
+.sepia-home-rail-open:hover {
+  opacity: 1;
+}
+
+.sepia-home-side-head [data-sepia-home-rail-close] {
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.sepia-home-side-head [data-sepia-home-rail-close]:hover {
+  opacity: 1;
 }
