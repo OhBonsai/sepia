@@ -23,9 +23,8 @@ const TARGET = 'packages/ui/src/icons/paths.ts'
  * 清单。**加图标就往这儿加一行再重跑**——于是"多了哪个图标"永远出现在 diff 里，
  * 与 `bridge-snapshot.json` 让暴露面增长可见是同一个手法。
  *
- * **只列有调用点的**。`panel-left-close` 原本在清单里，但应用里根本没有
- * "收起侧边栏"这个按钮（只有 ⌘\ 一个键位），于是它拷进来就是个没人调用的导出——
- * 正是"listModels 在桥上亮了四个 stage 没人接"那种东西。按"没有就不加"摘掉了。
+ * **只列有调用点的**：留一个没人调用的导出，就是下一个"listModels 在桥上
+ * 亮了四个 stage 没人接"。每次改这份清单都顺手确认一遍每个名字都有人用。
  */
 const NAMES = [
   'house',
@@ -39,6 +38,7 @@ const NAMES = [
   'square-pen',
   'settings-2',
   'circle-help',
+  'panel-left-close',
   'keyboard',
   'pen-tool',
   'file-text',

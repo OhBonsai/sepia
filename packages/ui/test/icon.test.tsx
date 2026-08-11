@@ -8,7 +8,7 @@ const NAMES = Object.keys(ICON_PATHS) as IconName[]
 
 describe('vendored 图标', () => {
   it('清单里那些都在（数量跟着 scripts/vendor-icons.mjs 的清单走）', () => {
-    expect(NAMES).toHaveLength(25)
+    expect(NAMES).toHaveLength(26)
   })
 
   it('每条都是**非空的 SVG 内容**——抽取脚本切错位置会得到空串', () => {

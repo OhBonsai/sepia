@@ -1497,3 +1497,12 @@ body {
 .sepia-home-searchbox .sepia-home-search {
   padding-left: 32px;
 }
+
+/* 当前 book 的标记：原型里 ◀ 所在的位置（当前 workspace 行的右缘）。
+   **只是标记，不是按钮**——所以不给 hover 态，也不吃指针事件。 */
+.sepia-home-book-mark {
+  margin-left: auto;
+  color: var(--sepia-ink-muted);
+  pointer-events: none;
+  opacity: 0.55;
+}

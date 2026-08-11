@@ -4,7 +4,7 @@
 // 上游：https://github.com/lucide-icons/lucide
 //
 // **为什么是拷贝而不是依赖**（190 附录 A-6：依赖是永久的，能拷就不引）：
-// 我们只用 25 个图标，而 lucide 有两千多个。引运行时依赖换来的是
+// 我们只用 26 个图标，而 lucide 有两千多个。引运行时依赖换来的是
 // "以后加图标不用手动拷"，付出的是一条永久的供应链边 + 打包体积 + 版本漂移。
 // 拷进来之后它就是我们仓库里的一段字符串——不会自己变，也不会在某天 breaking。
 //
@@ -27,6 +27,7 @@ export type IconName =
   | 'square-pen'
   | 'settings-2'
   | 'circle-help'
+  | 'panel-left-close'
   | 'keyboard'
   | 'pen-tool'
   | 'file-text'
@@ -65,6 +66,8 @@ export const ICON_PATHS: Record<IconName, string> = {
     '<path d="M14 17H5" /> <path d="M19 7h-9" /> <circle cx="17" cy="17" r="3" /> <circle cx="7" cy="7" r="3" />',
   'circle-help':
     '<circle cx="12" cy="12" r="10" /> <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /> <path d="M12 17h.01" />',
+  'panel-left-close':
+    '<rect width="18" height="18" x="3" y="3" rx="2" /> <path d="M9 3v18" /> <path d="m16 15-3-3 3-3" />',
   'keyboard':
     '<path d="M10 8h.01" /> <path d="M12 12h.01" /> <path d="M14 8h.01" /> <path d="M16 12h.01" /> <path d="M18 8h.01" /> <path d="M6 8h.01" /> <path d="M7 16h10" /> <path d="M8 12h.01" /> <rect width="20" height="16" x="2" y="4" rx="2" />',
   'pen-tool':

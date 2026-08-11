@@ -123,6 +123,12 @@ export function Home(props: HomeProps): React.JSX.Element {
             >
               <span className="sepia-home-avatar">{avatarOf(workspace.name)}</span>
               <span className="sepia-home-book-name">{workspace.name}</span>
+              {/* 当前 book 的标记。**位置照原型**——它画在当前 workspace 那一行的
+                  右缘（`│ S sepia │◀│`），不是一个独立的收起按钮。
+                  只在当前那一行出现，所以它同时是"你在哪个 book"的答案。 */}
+              {workspace.path === book && (
+                <Icon name="panel-left-close" size={13} className="sepia-home-book-mark" />
+              )}
             </button>
           ))}
         </div>
