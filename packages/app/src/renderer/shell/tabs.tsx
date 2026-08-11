@@ -1,4 +1,5 @@
 import { t } from '@sepia/core'
+import { Icon } from '@sepia/ui'
 
 // Tab 栏终态（190 P0，原型 Page 页 Layout）。
 //
@@ -37,7 +38,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
         title={t('tabs.home')}
         onClick={onHome}
       >
-        ⌂
+        <Icon name="house" />
       </button>
 
       {tabs.map((tab, index) => (
@@ -51,8 +52,10 @@ export function Tabs(props: TabsProps): React.JSX.Element {
         >
           {/* 只有文件名，没有图标——tab 条是一行细字，不是工具栏 */}
           <span className="sepia-tab-name">{tab.page.split('/').pop()}</span>
-          {/* **脏标与关闭同一个位置**：平时是 ■，悬停变 ×。
-              两个都常驻会让每个 tab 右边挂两个小东西，一排下来全是噪点。 */}
+          {/* **脏标与关闭同一个位置**：平时是脏标，悬停变 ×。
+              两个都常驻会让每个 tab 右边挂两个小东西，一排下来全是噪点。
+              **脏标仍是字形不是图标**：它是一个状态记号，不是可按的东西——
+              给它换成线描图标反而会让人以为它能点。 */}
           <span
             className="sepia-tab-close"
             data-sepia-tab-close={tab.page}
@@ -62,13 +65,15 @@ export function Tabs(props: TabsProps): React.JSX.Element {
             }}
           >
             <span className="sepia-tab-dirty-mark">■</span>
-            <span className="sepia-tab-close-mark">×</span>
+            <span className="sepia-tab-close-mark">
+              <Icon name="x" size={13} />
+            </span>
           </span>
         </div>
       ))}
 
       <button type="button" className="sepia-tab-add" data-sepia-tab-add="" title={t('tabs.new')} onClick={onCreate}>
-        ＋
+        <Icon name="plus" />
       </button>
 
       <span className="sepia-tabs-spacer" />
@@ -81,7 +86,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
         title={t('tabs.status')}
         onClick={onStatus}
       >
-        ▤
+        <Icon name="activity" />
       </button>
     </div>
   )

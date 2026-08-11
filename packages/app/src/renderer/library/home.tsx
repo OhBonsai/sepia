@@ -9,6 +9,7 @@ import {
   t,
   tabPath,
 } from '@sepia/core'
+import { Icon } from '@sepia/ui'
 
 import { api } from '../services/api.ts'
 
@@ -103,7 +104,7 @@ export function Home(props: HomeProps): React.JSX.Element {
               })
             }}
           >
-            ＋
+            <Icon name="plus" />
           </button>
         </div>
 
@@ -138,20 +139,25 @@ export function Home(props: HomeProps): React.JSX.Element {
               })
             }}
           >
-            ⌘O {t('home.open.page')}
+            <Icon name="file-text" />
+            {t('home.open.page')}
           </button>
           <button type="button" data-sepia-home-action="settings" onClick={onSettings}>
-            ◎ {t('home.settings')}
+            <Icon name="settings-2" />
+            {t('home.settings')}
           </button>
           {/* H7 帮助：待定项 1 说"点开是什么后议"。**先接快捷键看板**——
               一个点了没反应的入口比没有这个入口更糟。 */}
           <button type="button" data-sepia-home-action="help" onClick={onKeys}>
-            ? {t('home.help')}
+            <Icon name="circle-help" />
+            {t('home.help')}
           </button>
         </div>
       </aside>
 
       <main className="sepia-home-main">
+        <div className="sepia-home-searchbox">
+          <Icon name="search" className="sepia-home-search-icon" />
         <input
           className="sepia-home-search"
           data-sepia-home-search=""
@@ -159,6 +165,7 @@ export function Home(props: HomeProps): React.JSX.Element {
           placeholder={book === null ? t('home.search.nobook') : `${t('home.search.in')} ${bookName}`}
           onChange={(event) => setQuery(event.target.value)}
         />
+        </div>
 
         {book === null ? (
           <div className="sepia-home-empty" data-sepia-home-empty="">
@@ -175,7 +182,8 @@ export function Home(props: HomeProps): React.JSX.Element {
             <div className="sepia-home-label">
               <span>{t('home.recents')}</span>
               <button type="button" data-sepia-home-action="new" onClick={onNewPage}>
-                ✎ {t('home.new.page')}
+                <Icon name="square-pen" />
+                {t('home.new.page')}
               </button>
             </div>
             {/* **时间在每行右侧，没有分组头**（原型 Home Layout）。

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { t } from '@sepia/core'
+import { Icon } from '@sepia/ui'
 
 import { api } from '../services/api.ts'
 
@@ -31,6 +32,7 @@ export function Reader(props: ReaderProps): React.JSX.Element {
       <div className="sepia-reader-note" data-sepia-reader="failed">
         {t('reader.failed')}
         <button type="button" data-sepia-reader-system="" onClick={() => onOpenSystem(url)}>
+          <Icon name="external-link" size={13} />
           {t('reader.open.system')}
         </button>
       </div>
@@ -45,6 +47,7 @@ export function Reader(props: ReaderProps): React.JSX.Element {
         <p key={`${String(index)}-${paragraph.slice(0, 8)}`}>{paragraph}</p>
       ))}
       <button type="button" data-sepia-reader-system="" onClick={() => onOpenSystem(url)}>
+        <Icon name="external-link" size={13} />
         {t('reader.open.system')}
       </button>
     </article>

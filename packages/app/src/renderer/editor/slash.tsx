@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { type CopyKey, t } from '@sepia/core'
+import { Icon, type IconName } from '@sepia/ui'
 
 // F4 `/` 组件菜单（190 P1）。
 //
@@ -16,11 +17,12 @@ export interface SlashItem {
   label: CopyKey
   /** 插入的文本；`|` 标记光标最终落点（插入后会被去掉）。 */
   insert: string
+  icon: IconName
 }
 
 export const SLASH_ITEMS: SlashItem[] = [
-  { id: 'textdiagram', label: 'slash.textdiagram', insert: '```textdiagram\n|\n```\n' },
-  { id: 'image', label: 'slash.image', insert: '![](|)' },
+  { id: 'textdiagram', label: 'slash.textdiagram', insert: '```textdiagram\n|\n```\n', icon: 'workflow' },
+  { id: 'image', label: 'slash.image', insert: '![](|)', icon: 'image' },
 ]
 
 export interface SlashMenuProps {
@@ -85,6 +87,7 @@ export function SlashMenu(props: SlashMenuProps): React.JSX.Element | null {
             onPick(item)
           }}
         >
+          <Icon name={item.icon} />
           {t(item.label)}
         </div>
       ))}

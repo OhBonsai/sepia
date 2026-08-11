@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 import { type CopyKey, type Rightbar as RightbarState, clampRightbar, t } from '@sepia/core'
+import { Icon } from '@sepia/ui'
 
 // 右侧区容器（190 P0）。**一个位置，三种占用者互斥**，语义在 core 的 `openRight`。
 //
@@ -64,7 +65,7 @@ export function Rightbar(props: RightbarProps): React.JSX.Element {
       <div className="sepia-rightbar-head">
         <span className="sepia-rightbar-title">{t(TITLE[state.kind])}</span>
         <button type="button" data-sepia-rightbar-close="" title={t('rightbar.close')} onClick={onClose}>
-          ×
+          <Icon name="x" size={14} />
         </button>
       </div>
       <div className="sepia-rightbar-body">{children}</div>

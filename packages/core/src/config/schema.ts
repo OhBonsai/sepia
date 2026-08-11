@@ -46,6 +46,13 @@ export interface SettingSection {
 export interface SettingPage {
   id: string
   title: string
+  /**
+   * 图标**名字**，不是字形也不是组件。
+   *
+   * **core 不许碰 React**（结构 3：它是叶子包，能被 main / 单测直接用）——
+   * 所以这里只存一个名字，渲染留在 app 侧的 `<Icon>`。名字写错了会在那边
+   * 编译期红（`IconName` 是字面量联合），所以这层"只存字符串"并不放松类型。
+   */
   icon: string
   sections: SettingSection[]
 }
@@ -78,7 +85,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'general',
         title: '通用',
-        icon: '◎',
+        icon: 'settings-2',
         sections: [
           {
             title: '语言',
@@ -132,7 +139,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'keys',
         title: '快捷键',
-        icon: '▭',
+        icon: 'keyboard',
         sections: [
           {
             title: '快捷键',
@@ -155,7 +162,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'pen',
         title: '笔',
-        icon: '✎',
+        icon: 'pen-tool',
         sections: [
           {
             title: '输入',
@@ -197,7 +204,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'paper',
         title: '纸',
-        icon: '▤',
+        icon: 'file-text',
         sections: [
           {
             title: '纸面',
@@ -267,7 +274,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'companion',
         title: '伴',
-        icon: '◑',
+        icon: 'bot',
         sections: [
           {
             title: '上下文',
@@ -326,7 +333,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'models',
         title: '模型',
-        icon: '◉',
+        icon: 'cpu',
         sections: [
           {
             title: '可用模型',
@@ -345,13 +352,13 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'skills',
         title: '技能',
-        icon: '✦',
+        icon: 'sparkle',
         sections: [{ title: '技能', items: [{ id: 'skills', title: '技能列表', control: 'note', pending: true }] }],
       },
       {
         id: 'connectors',
         title: '连接器',
-        icon: '⌗',
+        icon: 'plug',
         sections: [
           {
             title: '连接器',
@@ -375,7 +382,7 @@ export const SETTINGS: SettingGroup[] = [
       {
         id: 'wechat',
         title: '微信公众号',
-        icon: '✉',
+        icon: 'send',
         sections: [
           { title: '账号', items: [{ id: 'wechat', title: '已授权的账号', control: 'readonly', pending: true }] },
         ],

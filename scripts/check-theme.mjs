@@ -87,5 +87,26 @@ for (const name of declared) {
   report.add('纪律 14', 'themeVar 声明了 theme.css 没定义的变量', PALETTE_FILE, `${name} —— 用它的地方会静默继承成别的颜色`)
 }
 
-report.note(`themeVar ${declared.size} 个 ｜ theme.css 定义 ${defined.size} 个 ｜ 两处高亮同源`)
-report.finish('theme —— Shiki 与 CM6 由同一份色板派生（纪律 14）')
+// D：设置 schema 里的图标名，必须在 vendored 的图标表里真实存在。
+//
+// 形状与上面三道**完全一样**：一个文件里写名字、另一个文件里定义它。
+// 之所以需要机器守，是因为 `SettingPage.icon` 只能是 `string`——core 是叶子包、
+// 不许碰 React，也就够不到 `IconName` 那个联合类型（结构 3）。渲染处那句
+// `as IconName` 是这条边上唯一的断言，名字写错的后果是**图标静默消失**，
+// 而不是编译期报错。这一道就是替那句断言把关的。
+const ICONS_FILE = 'packages/ui/src/icons/paths.ts'
+const SCHEMA_FILE = 'packages/core/src/config/schema.ts'
+const iconNames = new Set([...read(ICONS_FILE).matchAll(/^ {2}'([\w-]+)':$/gm)].map((match) => match[1]))
+const usedIcons = [...read(SCHEMA_FILE).matchAll(/icon:\s*'([\w-]+)'/g)].map((match) => match[1])
+for (const name of usedIcons) {
+  if (iconNames.has(name)) continue
+  report.add('纪律 14', '设置 schema 用了不存在的图标名', SCHEMA_FILE, `${name} —— 图标会静默消失，不会报错`)
+}
+if (usedIcons.length === 0) {
+  report.add('纪律 14', 'schema 里一个图标名都没扫到', SCHEMA_FILE, '不是它不需要图标，是这条检查找错了地方')
+}
+
+report.note(
+  `themeVar ${declared.size} 个 ｜ theme.css 定义 ${defined.size} 个 ｜ 图标 ${iconNames.size} 个 / schema 用 ${usedIcons.length} 处`,
+)
+report.finish('theme —— 色板同源 + 图标名真实存在（纪律 14）')

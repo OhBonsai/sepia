@@ -1,4 +1,5 @@
 import { t } from '@sepia/core'
+import { Icon, type IconName } from '@sepia/ui'
 
 // 纸顶三图标（190 P0，原型 Page 页 Layout）。
 //
@@ -22,7 +23,7 @@ export interface PaperTopProps {
 
 function icon(
   key: 'meta' | 'links' | 'threads',
-  glyph: string,
+  glyph: IconName,
   on: boolean,
   onClick: () => void,
   title: string,
@@ -36,7 +37,7 @@ function icon(
       title={title}
       onClick={onClick}
     >
-      {glyph}
+      <Icon name={glyph} />
     </button>
   )
 }
@@ -46,9 +47,9 @@ export function PaperTop(props: PaperTopProps): React.JSX.Element {
     <div className="sepia-paper-top" data-sepia-paper-top="">
       <span className="sepia-paper-name">{props.name}</span>
       <span className="sepia-paper-icons">
-        {icon('meta', '▤', props.metaOpen, props.onMeta, t('paper.meta'))}
-        {icon('links', '🔗', props.linksOpen, props.onLinks, t('paper.links'))}
-        {icon('threads', '💬', props.threadsOpen, props.onThreads, t('paper.threads'))}
+        {icon('meta', 'table-properties', props.metaOpen, props.onMeta, t('paper.meta'))}
+        {icon('links', 'link', props.linksOpen, props.onLinks, t('paper.links'))}
+        {icon('threads', 'message-square', props.threadsOpen, props.onThreads, t('paper.threads'))}
       </span>
     </div>
   )

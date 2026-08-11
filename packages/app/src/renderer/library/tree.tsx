@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { t, type TreeEntry, type TreeScan } from '@sepia/core'
+import { Icon } from '@sepia/ui'
 
 import { api } from '../services/api.ts'
 import { execute } from '../commands/registry.ts'
@@ -68,6 +69,19 @@ export function FileTree(props: FileTreeProps): React.JSX.Element {
 
   return (
     <div className="sepia-tree" data-sepia-tree={scan.degraded ? 'degraded' : 'full'}>
+      {/* 收起侧边栏。此前**只有 ⌘\ 一条路**——一个只能靠快捷键触达的功能，
+          等于对不知道那个键的人不存在。走 `execute` 而不是自己 setState：
+          按钮与键位是同一条路（纪律 6）。 */}
+      <div className="sepia-tree-head">
+        <button
+          type="button"
+          data-sepia-tree-collapse=""
+          title={t('cmd.library.sidebar')}
+          onClick={() => void execute('library.sidebar')}
+        >
+          <Icon name="panel-left-close" size={14} />
+        </button>
+      </div>
       {scan.degraded && (
         // **降级要说出来**：悄悄截断会让用户以为文件就这些
         <div className="sepia-tree-notice" data-sepia-tree-notice="degraded">

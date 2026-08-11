@@ -5,6 +5,8 @@
 
 import { useEffect, useRef } from 'react'
 
+import { Icon } from '../icons/icon.tsx'
+
 export interface SearchPanelCopy {
   searchPlaceholder: string
   replacePlaceholder: string
@@ -62,13 +64,13 @@ export function SearchPanel(props: SearchPanelProps): React.JSX.Element {
         />
         <span className="sepia-search-count">{props.copy.count}</span>
         <button type="button" onClick={props.onPrevious} title={props.copy.previous}>
-          ↑
+          <Icon name="chevron-up" size={14} />
         </button>
         <button type="button" onClick={props.onNext} title={props.copy.next}>
-          ↓
+          <Icon name="chevron-down" size={14} />
         </button>
         <button type="button" onClick={props.onClose} title={props.copy.close}>
-          ✕
+          <Icon name="x" size={14} />
         </button>
       </div>
       {props.showReplace && (

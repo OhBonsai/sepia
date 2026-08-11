@@ -5,5 +5,6 @@
 // 那会让任何 import 这个包的单测都被迫解析 css。
 
 export { type ThemeVar, type ThemeVarName, themeVar } from './theme/vars.ts'
+export { Icon, type IconName, type IconProps } from './icons/icon.tsx'
 export { Loading, type LoadingProps } from './components/loading.tsx'
 export { SearchPanel, type SearchPanelCopy, type SearchPanelProps } from './components/search-panel.tsx'

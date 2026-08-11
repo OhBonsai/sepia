@@ -12,6 +12,8 @@ import {
   type RevealState,
 } from '@sepia/core'
 
+import { Icon } from '@sepia/ui'
+
 import { type AgentModel, agent } from '../services/agent-bridge.ts'
 
 import { StreamPreview } from './preview.tsx'
@@ -201,6 +203,7 @@ export function MarkupPanel(props: MarkupPanelProps): React.JSX.Element {
             {/* **重试与换模型是同一个动作的两半**（D-29）：不满意才会想换脑子，
                 所以模型不占第一层的版面，收在重试旁边。 */}
             <button type="button" data-sepia-markup-retry="" onClick={() => submit(instruction)}>
+              <Icon name="rotate-cw" size={13} />
               {t('markup.retry')}
             </button>
             {models.length > 0 && (

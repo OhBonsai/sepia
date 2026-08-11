@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { type AppConfig, SETTINGS, type SettingItem, t } from '@sepia/core'
+import { Icon, type IconName } from '@sepia/ui'
 
 // 设置页（190 P3，S1–S5）。**浮层模态**，⌘, 唤起，盖在当前界面上——
 // 不是独立路由页，关掉就回到关闭前那张纸，上下文一点不丢（S1）。
@@ -121,7 +122,12 @@ export function Settings(props: SettingsProps): React.JSX.Element {
                   data-sepia-set-page-active={it.id === pageId ? 'true' : 'false'}
                   onClick={() => setPageId(it.id)}
                 >
-                  {it.icon} {it.title}
+                  {/* schema 存的是图标**名字**（core 不碰 React），在这儿才变成 SVG。
+                      `as IconName` 是这条边上唯一的断言——名字写错时它会在
+                      `ICON_PATHS[name]` 那里取到 undefined，所以下面的检查里
+                      有一条专门扫 schema 的图标名。 */}
+                  <Icon name={it.icon as IconName} />
+                  {it.title}
                 </button>
               ))}
             </div>
