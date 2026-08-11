@@ -23,7 +23,10 @@ export function Icon(props: IconProps): React.JSX.Element {
   const { name, size = 16, className } = props
   return (
     <svg
-      className={className}
+      // **自带 `sepia-icon` 类**：对齐（不许被压扁、与文字居中对齐）在这一处解决，
+      // 不靠调用处各自记得加。上一版把对齐写成"给这些选择器加 gap"的清单，
+      // 而清单天然会漏——设置页导航就漏了，图标直接贴在字上。
+      className={className === undefined ? 'sepia-icon' : `sepia-icon ${className}`}
       width={size}
       height={size}
       viewBox="0 0 24 24"

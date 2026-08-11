@@ -1450,26 +1450,6 @@ body {
   border-bottom-left-radius: 4px;
 }
 
-/* ── Lucide 图标接入后的几处对齐 ─────────────────────────────────────
-   图标是 inline SVG 且 stroke=currentColor，所以它自动吃按钮的 color；
-   这里只管**对齐**——图标与文字并排时基线不齐会比没有图标更难看。 */
-.sepia-tab-home,
-.sepia-tab-add,
-.sepia-tab-status,
-.sepia-paper-icon,
-.sepia-home-side-head button,
-.sepia-home-side-foot button,
-.sepia-home-label button,
-.sepia-rightbar-head button,
-.sepia-reader-note button,
-.sepia-reader button,
-.sepia-markup-actions button,
-.sepia-slash-item {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
 .sepia-tab-close-mark {
   display: none;
   align-items: center;
@@ -1505,4 +1485,70 @@ body {
   color: var(--sepia-ink-muted);
   pointer-events: none;
   opacity: 0.55;
+}
+
+/* ── 图标对齐（借 opencode 的 Icon 规范）─────────────────────────────
+   它那份的要点是：图标是一个**居中且不许被压扁的方块**，不是一个随基线漂的字形。
+   `flex: none` 那一条尤其重要——放进 flex 容器里，缺了它图标会被文字挤扁。 */
+.sepia-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  /* 非 flex 容器（行内文字里）靠它与文字居中；flex 容器里被 align-items 接管 */
+  vertical-align: -0.15em;
+}
+
+/* **图标与文字的间距用 `:has()` 一条规则给**，不再枚举选择器。
+   上一版是一份"这些选择器要 gap"的清单，而清单天然会漏——
+   设置页导航就漏了，图标直接贴在字上（真人走查截图里看得很清楚）。
+   `:has()` 反过来问"谁装着图标"，于是新加的调用点自动被覆盖。 */
+:is(button, a, div, span, label):has(> .sepia-icon) {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* 设置页导航是块级的整行，不能被上面那条改成 inline-flex */
+.sepia-set-nav-item:has(> .sepia-icon),
+.sepia-home-book:has(> .sepia-icon),
+.sepia-home-side-foot button:has(> .sepia-icon),
+.sepia-slash-item:has(> .sepia-icon),
+.sepia-set-row:has(> .sepia-icon) {
+  display: flex;
+}
+
+/* 焦点环：默认那圈亮蓝在这张纸上太吵。**不是去掉**——键盘用户要看得见焦点，
+   只是换成我们自己的色。 */
+:focus-visible {
+  outline: 1px solid var(--sepia-ink-muted);
+  outline-offset: 1px;
+}
+
+.sepia-tab-close-mark {
+  display: none;
+  align-items: center;
+}
+
+.sepia-tab:hover .sepia-tab-close-mark {
+  display: inline-flex;
+}
+
+/* 主页搜索框：图标压在框内左侧 */
+.sepia-home-searchbox {
+  position: relative;
+  max-width: 720px;
+}
+
+.sepia-home-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: var(--sepia-ink-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.sepia-home-searchbox .sepia-home-search {
+  padding-left: 32px;
 }
