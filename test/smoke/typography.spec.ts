@@ -19,7 +19,7 @@ test.afterEach(async () => {
   await Promise.all(launched.splice(0).map((app) => app.close().catch(() => undefined)))
 })
 
-async function boot(): Promise<Page> {
+async function boot(theme?: 'dark' | 'light'): Promise<Page> {
   const home = await mkdtemp(join(tmpdir(), 'sepia-type-'))
   const page = join(home, 'note.md')
   await writeFile(page, '第一段中文正文。\n\n`行内代码`\n\n```js\nconst a = 1\n```\n', 'utf8')
@@ -29,6 +29,9 @@ async function boot(): Promise<Page> {
     JSON.stringify({ version: 2, book: null, tabs: [{ page: page, cursor: 0, scrollTop: 0 }], active: 0 }),
     'utf8',
   )
+  if (theme !== undefined) {
+    await writeFile(join(home, '.sepia', 'config.json'), JSON.stringify({ version: 1, theme }), 'utf8')
+  }
   const app = await electron.launch({
     args: LAUNCH_ARGS,
     env: {
@@ -92,5 +95,54 @@ test('#12 气质基线：无行号槽、正文非等宽、版心 ≤760', async 
   // 居中：两侧留白之差不超过 2px（窗口够宽时才有意义）
   if (layout!.viewport > 800) {
     expect(Math.abs(layout!.leftGap - layout!.rightGap), '版心没居中').toBeLessThanOrEqual(2)
+  }
+})
+
+test('#12b 选区底色**在两套主题下都用我们的色板**（dark 下曾被 CM6 默认压掉）', async () => {
+  for (const theme of ['dark', 'light'] as const) {
+    const win = await boot(theme)
+    await win.locator('.cm-line').first().click({ clickCount: 3 })
+    await win.waitForTimeout(400)
+
+    const probe = await win.evaluate(() => {
+      const root = getComputedStyle(document.documentElement)
+      const layer = document.querySelector('.cm-selectionBackground')
+      const content = document.querySelector('.cm-content')
+      // 下面两个小函数**必须留在这个回调里**：它整个被序列化后在页面上下文执行，
+      // 提到外层就传不进去了。lint 的 consistent-function-scoping 在这儿不适用。
+      /** `#rrggbb` → `rgb(r, g, b)`，与 computed 值同形才比得了 */
+      // eslint-disable-next-line unicorn/consistent-function-scoping -- 见上
+      const toRgb = (hex: string): string => {
+        const v = hex.trim().replace('#', '')
+        return `rgb(${String(Number.parseInt(v.slice(0, 2), 16))}, ${String(
+          Number.parseInt(v.slice(2, 4), 16),
+        )}, ${String(Number.parseInt(v.slice(4, 6), 16))})`
+      }
+      // eslint-disable-next-line unicorn/consistent-function-scoping -- 同上：页面上下文
+      const luminance = (rgb: string): number => {
+        const [r = 0, g = 0, b = 0] = (/(\d+), (\d+), (\d+)/.exec(rgb) ?? []).slice(1).map(Number)
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      }
+      return {
+        expected: toRgb(root.getPropertyValue('--sepia-selection')),
+        actual: layer === null ? null : getComputedStyle(layer).backgroundColor,
+        contrast:
+          layer === null || content === null
+            ? 0
+            : Math.abs(
+                luminance(getComputedStyle(layer).backgroundColor) -
+                  luminance(getComputedStyle(content).color),
+              ),
+      }
+    })
+
+    // 一：画出来的**就是色板里那一个值**。
+    // 实测栽过：`--sepia-selection` 明明是对的，画出来却是 CM6 `drawSelection`
+    // 自带的 `#d7d4f0`——它的选择器路径更长、特异性更高，一直压着我们的规则。
+    // dark 下于是成了浅紫底 + 浅色字，选了什么根本看不清。
+    expect(probe.actual, `${theme}：选区底色不是色板里那个值`).toBe(probe.expected)
+
+    // 二：**选区与正文得分得开**（这条才是用户真正在意的）
+    expect(probe.contrast, `${theme}：选区与正文的明度差太小，选了什么看不清`).toBeGreaterThan(0.25)
   }
 })

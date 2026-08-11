@@ -57,7 +57,25 @@ const paperTheme = EditorView.theme({
   '.cm-scroller': { justifyContent: 'center' },
   '.cm-content, .cm-gutters': { maxWidth: `${MEASURE_PX}px`, width: '100%' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--sepia-caret)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+  /**
+   * 选区底色。**选择器必须写全 CM6 那条路径**，不能只写 `.cm-selectionBackground`。
+   *
+   * 实测（dark 模式下选区几乎读不出来时量的）：`--sepia-selection` 是对的
+   * （dark 下 `#343331`），但画出来的实际颜色是 `rgb(215,212,240)`——
+   * 那是 CM6 `drawSelection` 自带的 `#d7d4f0`。它的选择器是
+   * `&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`，
+   * **比我们原来那条短选择器特异性高**，于是一直压着我们的规则。
+   * 结果是 dark 模式下浅紫底 + 浅色字，对比度低到看不清选了什么。
+   *
+   * 三条各自对着 CM6 的一条默认：聚焦态、失焦态、原生 `::selection`。
+   */
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--sepia-selection)',
+  },
+  '> .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--sepia-selection)',
+  },
+  '.cm-content ::selection, .cm-line::selection': {
     backgroundColor: 'var(--sepia-selection)',
   },
   '.cm-activeLine': { backgroundColor: 'transparent' },
